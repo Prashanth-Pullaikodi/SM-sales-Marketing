@@ -114,6 +114,16 @@ function handleClientRequest(action, dataJson) {
       case 'generateManagementReportPDF':
         return generateManagementReportPDF(data, user);
 
+      // Per-module PDF exports
+      case 'generateDSRListPDF':
+        return generateDSRListPDF(data, user);
+      case 'generateTravelPDF':
+        return generateTravelPDF(data, user);
+      case 'generateLeadsPDF':
+        return generateLeadsPDF(data, user);
+      case 'generateBookingsPDF':
+        return generateBookingsPDF(data, user);
+
       default:
         return { success: false, error: 'Unknown action: ' + action };
     }

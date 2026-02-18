@@ -127,6 +127,47 @@ function stopBookingPoll() {
   if (_bkPollTimer) { clearInterval(_bkPollTimer); _bkPollTimer = null; }
 }
 
+// ─── PAGINATION HELPER ────────────────────────────────────────
+
+/**
+ * Build a pagination bar HTML string.
+ * @param {object} res  - server response: { page, totalPages, total, pageSize }
+ * @param {string} loadFn - name of the JS function to call with the page number
+ */
+function buildPaginationBar(res, loadFn) {
+  if (!res || !res.totalPages || res.totalPages <= 1) return '';
+  var p   = res.page || 0;
+  var tp  = res.totalPages || 1;
+  var tot = res.total || 0;
+  var ps  = res.pageSize || 200;
+  var from = p * ps + 1;
+  var to   = Math.min((p + 1) * ps, tot);
+  return '<div class="pagination-bar" style="display:flex;align-items:center;gap:10px;' +
+    'padding:10px 16px;background:var(--bg-main);border-top:1px solid var(--border);' +
+    'font-size:12px;color:var(--text-muted);">' +
+    '<button class="btn btn-ghost btn-sm" onclick="' + loadFn + '(0)" ' +
+      (p === 0 ? 'disabled' : '') + '>⏮ First</button>' +
+    '<button class="btn btn-ghost btn-sm" onclick="' + loadFn + '(' + (p - 1) + ')" ' +
+      (p === 0 ? 'disabled' : '') + '>‹ Prev</button>' +
+    '<span style="flex:1;text-align:center;">Page <strong>' + (p + 1) + '</strong> of <strong>' + tp +
+      '</strong> &nbsp;|&nbsp; Showing ' + from + '–' + to + ' of <strong>' + tot + '</strong> records</span>' +
+    '<button class="btn btn-ghost btn-sm" onclick="' + loadFn + '(' + (p + 1) + ')" ' +
+      (p >= tp - 1 ? 'disabled' : '') + '>Next ›</button>' +
+    '<button class="btn btn-ghost btn-sm" onclick="' + loadFn + '(' + (tp - 1) + ')" ' +
+      (p >= tp - 1 ? 'disabled' : '') + '>Last ⏭</button>' +
+  '</div>';
+}
+
+/** Open a PDF URL returned from a generateXxxPDF API call. */
+function openPDFResult(res) {
+  if (res.downloadUrl) {
+    window.open(res.downloadUrl, '_blank');
+    showToast('📄 PDF ready! (' + (res.recordCount || 0) + ' records)', 'success');
+  } else {
+    showToast(res.message || 'PDF generated', 'success');
+  }
+}
+
 // ─── NAVIGATION ───────────────────────────────────────────────
 
 var _currentPage = null;
@@ -482,6 +523,11 @@ function pipelineBar(label, value, max, color, suffix) {
 
 // ─── DSR PAGE ─────────────────────────────────────────────────
 
+var _dsrPaginationMeta = {};
+var _tvPaginationMeta  = {};
+var _ldPaginationMeta  = {};
+var _bkPaginationMeta  = {};
+
 function renderDSRPage(container) {
   var isManager = CURRENT_USER.role !== 'Sales';
   container.innerHTML =
@@ -494,25 +540,28 @@ function renderDSRPage(container) {
       dropdowns: isManager ? [{ id: 'salesRep', label: 'Rep' }] : [],
       onFilter: 'dsrFilter', onClear: 'dsrClear', exportBtn: true, onExport: 'dsrExport'
     }) +
-    '<div class="filters-bar" style="margin-top:6px;">' +
+    '<div class="filters-bar" style="margin-top:6px;flex-wrap:wrap;gap:8px;">' +
       '<select class="filter-select" id="dsrMonth">' + monthOptions() + '</select>' +
       '<select class="filter-select" id="dsrYear">' + yearOptions() + '</select>' +
-      '<button class="btn btn-ghost btn-sm" onclick="loadDSRList()">🔍 Load Period</button>' +
+      '<button class="btn btn-ghost btn-sm" onclick="loadDSRList(0)">🔍 Load Period</button>' +
+      (CURRENT_USER.role !== 'Sales' ?
+        '<button class="btn btn-outline btn-sm" onclick="exportDSRPDF()">📄 PDF Report</button>' : '') +
     '</div>' +
     '<div class="card">' +
       '<div class="card-header"><div class="card-title">My Reports</div><span id="dsrCount" class="text-muted" style="font-size:12px;"></span></div>' +
       '<div id="dsrTableWrap" style="padding:0;">' + spinnerHTML() + '</div>' +
     '</div>';
-  loadDSRList();
+  loadDSRList(0);
 }
 
-function loadDSRList() {
+function loadDSRList(page) {
   var month = (document.getElementById('dsrMonth') || {}).value || '';
   var year  = (document.getElementById('dsrYear')  || {}).value || '';
-  var wrap = document.getElementById('dsrTableWrap');
+  var wrap  = document.getElementById('dsrTableWrap');
   if (!wrap) return;
   wrap.innerHTML = spinnerHTML();
-  api('getDSRList', { month: month, year: year }).then(function(res) {
+  api('getDSRList', { month: month, year: year, page: page || 0, pageSize: 200 }).then(function(res) {
+    _dsrPaginationMeta = res;
     if (!res.data || res.data.length === 0) {
       wrap.innerHTML = emptyState('📝', 'No Reports Found', 'Submit your first daily report to get started.');
       TableEnhancer.init('dsr', []); setEl('dsrCount', '0 record(s)'); return;
@@ -528,6 +577,15 @@ function loadDSRList() {
     var w = document.getElementById('dsrTableWrap');
     if (w) w.innerHTML = errorState('DSR List', err.message);
   });
+}
+
+function exportDSRPDF() {
+  var month = (document.getElementById('dsrMonth') || {}).value || '';
+  var year  = (document.getElementById('dsrYear')  || {}).value || '';
+  var rep   = (document.getElementById('dsr_salesRep') || {}).value || '';
+  showToast('⏳ Generating PDF…', 'info');
+  api('generateDSRListPDF', { month: month, year: year, salesRep: rep }, { noCache: true })
+    .then(openPDFResult).catch(function(err) { showToast(err.message, 'error'); });
 }
 
 function renderDSRRows(data) {
@@ -559,7 +617,8 @@ function renderDSRRows(data) {
       { label:'Purpose', key:'purpose' },   { label:'Status', key:'status' },
       { label:'Actions', sortable: false }
     ]);
-  wrap.innerHTML = buildSortableTable({ tableId: 'dsrTable', columns: cols, onSort: 'dsrSort' });
+  wrap.innerHTML = buildSortableTable({ tableId: 'dsrTable', columns: cols, onSort: 'dsrSort' }) +
+    buildPaginationBar(_dsrPaginationMeta, 'loadDSRList');
   document.getElementById('dsrTable_body').innerHTML = rows;
 }
 function dsrFilter() {
@@ -664,18 +723,27 @@ function renderTravelPage(container) {
       ].concat(canApprove ? [{ id: 'salesRep', label: 'Rep' }] : []),
       onFilter: 'tvFilter', onClear: 'tvClear', exportBtn: true, onExport: 'tvExport'
     }) +
+    '<div class="filters-bar" style="margin-top:6px;flex-wrap:wrap;gap:8px;">' +
+      '<button class="btn btn-ghost btn-sm" onclick="loadTravelList(0)">🔍 Refresh List</button>' +
+      (CURRENT_USER.role !== 'Sales' ?
+        '<button class="btn btn-outline btn-sm" onclick="exportTravelPDF()">📄 PDF Report</button>' : '') +
+    '</div>' +
     '<div class="card">' +
       '<div class="card-header"><div class="card-title">Travel Plans</div><span id="tvCount" class="text-muted" style="font-size:12px;"></span></div>' +
       '<div id="tvTableWrap" style="padding:0;">' + spinnerHTML() + '</div>' +
     '</div>';
-  loadTravelList();
+  loadTravelList(0);
 }
 
-function loadTravelList() {
+function loadTravelList(page) {
+  var dateFrom = (document.getElementById('tv_dateFrom') || {}).value || '';
+  var dateTo   = (document.getElementById('tv_dateTo')   || {}).value || '';
+  var status   = (document.getElementById('tv_status')   || {}).value || '';
   var wrap = document.getElementById('tvTableWrap');
   if (!wrap) return;
   wrap.innerHTML = spinnerHTML();
-  api('getTravelList', {}).then(function(res) {
+  api('getTravelList', { dateFrom: dateFrom, dateTo: dateTo, status: status, page: page || 0, pageSize: 200 }).then(function(res) {
+    _tvPaginationMeta = res;
     if (!res.data || res.data.length === 0) {
       wrap.innerHTML = emptyState('✈️','No Travel Plans','No travel plans found.');
       TableEnhancer.init('tv', []); setEl('tvCount', '0 plan(s)'); return;
@@ -691,6 +759,16 @@ function loadTravelList() {
     var w = document.getElementById('tvTableWrap');
     if (w) w.innerHTML = errorState('Travel Plans', err.message);
   });
+}
+
+function exportTravelPDF() {
+  var dateFrom = (document.getElementById('tv_dateFrom') || {}).value || '';
+  var dateTo   = (document.getElementById('tv_dateTo')   || {}).value || '';
+  var status   = (document.getElementById('tv_status')   || {}).value || '';
+  var rep      = (document.getElementById('tv_salesRep') || {}).value || '';
+  showToast('⏳ Generating PDF…', 'info');
+  api('generateTravelPDF', { dateFrom: dateFrom, dateTo: dateTo, status: status, salesRep: rep }, { noCache: true })
+    .then(openPDFResult).catch(function(err) { showToast(err.message, 'error'); });
 }
 
 function renderTVRows(data) {
@@ -727,7 +805,8 @@ function renderTVRows(data) {
       { label:'Days', key:'estimatedDays' },       { label:'Status', key:'status' },
       { label:'Actions', sortable: false }
     ]);
-  wrap.innerHTML = buildSortableTable({ tableId: 'tvTable', columns: cols, onSort: 'tvSort' });
+  wrap.innerHTML = buildSortableTable({ tableId: 'tvTable', columns: cols, onSort: 'tvSort' }) +
+    buildPaginationBar(_tvPaginationMeta, 'loadTravelList');
   document.getElementById('tvTable_body').innerHTML = rows;
 }
 function tvFilter() {
@@ -848,18 +927,27 @@ function renderLeadsPage(container) {
       ],
       onFilter: 'ldFilter', onClear: 'ldClear', exportBtn: true, onExport: 'ldExport'
     }) +
+    '<div class="filters-bar" style="margin-top:6px;flex-wrap:wrap;gap:8px;">' +
+      '<button class="btn btn-ghost btn-sm" onclick="loadLeadList(0)">🔍 Refresh List</button>' +
+      (CURRENT_USER.role !== 'Sales' ?
+        '<button class="btn btn-outline btn-sm" onclick="exportLeadsPDF()">📄 PDF Report</button>' : '') +
+    '</div>' +
     '<div class="card">' +
       '<div class="card-header"><div class="card-title">Leads</div><span id="ldCount" class="text-muted" style="font-size:12px;"></span></div>' +
       '<div id="ldTableWrap" style="padding:0;">' + spinnerHTML() + '</div>' +
     '</div>';
-  loadLeadList();
+  loadLeadList(0);
 }
 
-function loadLeadList() {
+function loadLeadList(page) {
+  var dateFrom = (document.getElementById('ld_dateFrom') || {}).value || '';
+  var dateTo   = (document.getElementById('ld_dateTo')   || {}).value || '';
+  var status   = (document.getElementById('ld_status')   || {}).value || '';
   var wrap = document.getElementById('ldTableWrap');
   if (!wrap) return;
   wrap.innerHTML = spinnerHTML();
-  api('getLeads', {}).then(function(res) {
+  api('getLeads', { dateFrom: dateFrom, dateTo: dateTo, status: status, page: page || 0, pageSize: 200 }).then(function(res) {
+    _ldPaginationMeta = res;
     if (!res.data || res.data.length === 0) {
       wrap.innerHTML = emptyState('🎯','No Leads Found','Add your first lead to start tracking.');
       TableEnhancer.init('ld', []); setEl('ldCount', '0 lead(s)'); return;
@@ -875,6 +963,16 @@ function loadLeadList() {
     var w = document.getElementById('ldTableWrap');
     if (w) w.innerHTML = errorState('Leads', err.message);
   });
+}
+
+function exportLeadsPDF() {
+  var dateFrom = (document.getElementById('ld_dateFrom') || {}).value || '';
+  var dateTo   = (document.getElementById('ld_dateTo')   || {}).value || '';
+  var status   = (document.getElementById('ld_status')   || {}).value || '';
+  var rep      = (document.getElementById('ld_salesRep') || {}).value || '';
+  showToast('⏳ Generating PDF…', 'info');
+  api('generateLeadsPDF', { dateFrom: dateFrom, dateTo: dateTo, status: status, salesRep: rep }, { noCache: true })
+    .then(openPDFResult).catch(function(err) { showToast(err.message, 'error'); });
 }
 
 function renderLeadRows(data) {
@@ -904,7 +1002,8 @@ function renderLeadRows(data) {
     { label:'Budget', key:'budget' },    { label:'Assigned', key:'assignedTo' },
     { label:'Status', key:'status' },    { label:'Actions', sortable: false }
   ];
-  wrap.innerHTML = buildSortableTable({ tableId: 'ldTable', columns: cols, onSort: 'ldSort' });
+  wrap.innerHTML = buildSortableTable({ tableId: 'ldTable', columns: cols, onSort: 'ldSort' }) +
+    buildPaginationBar(_ldPaginationMeta, 'loadLeadList');
   document.getElementById('ldTable_body').innerHTML = rows;
 }
 function ldFilter() {
@@ -1045,18 +1144,27 @@ function renderBookingsPage(container) {
       ],
       onFilter: 'bkFilter', onClear: 'bkClear', exportBtn: true, onExport: 'bkExport'
     }) +
+    '<div class="filters-bar" style="margin-top:6px;flex-wrap:wrap;gap:8px;">' +
+      '<button class="btn btn-ghost btn-sm" onclick="loadBookingsList(0)">🔍 Refresh List</button>' +
+      (CURRENT_USER.role !== 'Sales' ?
+        '<button class="btn btn-outline btn-sm" onclick="exportBookingsPDF()">📄 PDF Report</button>' : '') +
+    '</div>' +
     '<div class="card">' +
       '<div class="card-header"><div class="card-title">All Bookings</div><span id="bkCount" class="text-muted" style="font-size:12px;"></span></div>' +
       '<div id="bkTableWrap" style="padding:0;">' + spinnerHTML() + '</div>' +
     '</div>';
-  loadBookingsList();
+  loadBookingsList(0);
 }
 
-function loadBookingsList() {
+function loadBookingsList(page) {
+  var dateFrom = (document.getElementById('bk_dateFrom') || {}).value || '';
+  var dateTo   = (document.getElementById('bk_dateTo')   || {}).value || '';
+  var status   = (document.getElementById('bk_status')   || {}).value || '';
   var wrap = document.getElementById('bkTableWrap');
   if (!wrap) return;
   wrap.innerHTML = spinnerHTML();
-  api('getBookings', {}).then(function(res) {
+  api('getBookings', { dateFrom: dateFrom, dateTo: dateTo, status: status, page: page || 0, pageSize: 200 }).then(function(res) {
+    _bkPaginationMeta = res;
     if (!res.data || res.data.length === 0) {
       wrap.innerHTML = emptyState('📅','No Bookings','No bookings found.');
       TableEnhancer.init('bk', []); setEl('bkCount', '0 booking(s)'); return;
@@ -1072,6 +1180,16 @@ function loadBookingsList() {
     var w = document.getElementById('bkTableWrap');
     if (w) w.innerHTML = errorState('Bookings', err.message);
   });
+}
+
+function exportBookingsPDF() {
+  var dateFrom = (document.getElementById('bk_dateFrom') || {}).value || '';
+  var dateTo   = (document.getElementById('bk_dateTo')   || {}).value || '';
+  var status   = (document.getElementById('bk_status')   || {}).value || '';
+  var rep      = (document.getElementById('bk_salesRep') || {}).value || '';
+  showToast('⏳ Generating PDF…', 'info');
+  api('generateBookingsPDF', { dateFrom: dateFrom, dateTo: dateTo, status: status, salesRep: rep }, { noCache: true })
+    .then(openPDFResult).catch(function(err) { showToast(err.message, 'error'); });
 }
 
 function renderBkRows(data) {
@@ -1104,7 +1222,8 @@ function renderBkRows(data) {
     { label:'Nights', key:'nights' },        { label:'Total Value', key:'totalValue' },
     { label:'Sales Rep', key:'salesRep' },   { label:'Status', key:'status' }
   ];
-  wrap.innerHTML = buildSortableTable({ tableId: 'bkTable', columns: cols, onSort: 'bkSort' });
+  wrap.innerHTML = buildSortableTable({ tableId: 'bkTable', columns: cols, onSort: 'bkSort' }) +
+    buildPaginationBar(_bkPaginationMeta, 'loadBookingsList');
   document.getElementById('bkTable_body').innerHTML = rows;
 }
 function bkFilter() {

@@ -62,49 +62,60 @@ function submitDailyReport(data, user) {
 }
 
 function getDailyReports(user, filters) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEETS.DAILY_REPORTS);
-  const data = sheet.getDataRange().getValues();
+  const ss      = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet   = ss.getSheetByName(SHEETS.DAILY_REPORTS);
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return { success: true, data: [], count: 0, total: 0, totalPages: 0 };
 
-  const reports = [];
-  for (let i = 1; i < data.length; i++) {
-    if (!data[i][0]) continue;
-    const row = data[i];
+  // Read only needed columns (14) instead of the entire wide sheet
+  const raw  = sheet.getRange(1, 1, lastRow, 14).getValues();
+  const PAGE = parseInt((filters && filters.pageSize) || 200);
+  const page = parseInt((filters && filters.page)     || 0);
 
-    // Role-based filtering: Sales only sees their own
-    if (user.role === "Sales" && String(row[3]).toLowerCase() !== user.email.toLowerCase()) {
-      continue;
+  const mFlt = filters && filters.month ? parseInt(filters.month) : 0;
+  const yFlt = filters && filters.year  ? parseInt(filters.year)  : 0;
+
+  // Pass 1 — collect matching row indices only (fast, no object allocation)
+  const matchIdx = [];
+  for (let i = 1; i < raw.length; i++) {
+    if (!raw[i][0]) continue;
+    if (user.role === "Sales" && String(raw[i][3]).toLowerCase() !== user.email.toLowerCase()) continue;
+    if (mFlt && yFlt) {
+      const d = new Date(raw[i][1]);
+      if (d.getMonth() + 1 !== mFlt || d.getFullYear() !== yFlt) continue;
     }
-
-    // Apply date filters
-    if (filters && filters.month && filters.year) {
-      const rowDate = new Date(row[1]);
-      if (rowDate.getMonth() + 1 !== parseInt(filters.month) ||
-          rowDate.getFullYear() !== parseInt(filters.year)) {
-        continue;
-      }
-    }
-
-    reports.push({
-      id:          String(row[0]).trim(),
-      date:        String(row[1]).trim(),
-      salesRep:    String(row[2]).trim(),
-      email:       String(row[3]).trim(),
-      location:    String(row[4]).trim(),
-      clientName:  String(row[5]).trim(),
-      contact:     String(row[6]).trim(),
-      purpose:     String(row[7]).trim(),
-      result:      String(row[8]).trim(),
-      nextAction:  String(row[9]).trim(),
-      proofLink:   String(row[10]).trim(),
-      pdfLink:     String(row[11]).trim(),
-      status:      String(row[12]).trim(),
-      submittedAt: String(row[13]).trim()
-    });
+    matchIdx.push(i);
   }
 
-  reports.reverse(); // newest first
-  return { success: true, data: reports, count: reports.length };
+  const total      = matchIdx.length;
+  const totalPages = total > 0 ? Math.ceil(total / PAGE) : 0;
+
+  // Reverse (newest first) then slice the requested page
+  matchIdx.reverse();
+  const pageIdx = matchIdx.slice(page * PAGE, (page + 1) * PAGE);
+
+  // Pass 2 — build objects only for the current page slice
+  const reports = pageIdx.map(function(i) {
+    const r = raw[i];
+    return {
+      id:          String(r[0]).trim(),
+      date:        String(r[1]).trim(),
+      salesRep:    String(r[2]).trim(),
+      email:       String(r[3]).trim(),
+      location:    String(r[4]).trim(),
+      clientName:  String(r[5]).trim(),
+      contact:     String(r[6]).trim(),
+      purpose:     String(r[7]).trim(),
+      result:      String(r[8]).trim(),
+      nextAction:  String(r[9]).trim(),
+      proofLink:   String(r[10]).trim(),
+      pdfLink:     String(r[11]).trim(),
+      status:      String(r[12]).trim(),
+      submittedAt: String(r[13]).trim()
+    };
+  });
+
+  return { success: true, data: reports, count: reports.length, total, page, pageSize: PAGE, totalPages };
 }
 
 // ─── TRAVEL PLANS ─────────────────────────────────────────────
@@ -158,41 +169,64 @@ function submitTravelPlan(data, user) {
 }
 
 function getTravelPlans(user, filters) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEETS.TRAVEL_PLANS);
-  const data = sheet.getDataRange().getValues();
+  const ss      = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet   = ss.getSheetByName(SHEETS.TRAVEL_PLANS);
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return { success: true, data: [], count: 0, total: 0, totalPages: 0 };
 
-  const plans = [];
-  for (let i = 1; i < data.length; i++) {
-    if (!data[i][0]) continue;
-    const row = data[i];
+  const raw  = sheet.getRange(1, 1, lastRow, 17).getValues();
+  const PAGE = parseInt((filters && filters.pageSize) || 200);
+  const page = parseInt((filters && filters.page)     || 0);
+  const sFlt      = filters && filters.status   ? String(filters.status).toLowerCase() : '';
+  const dateFrom  = filters && filters.dateFrom ? new Date(filters.dateFrom) : null;
+  const dateTo    = filters && filters.dateTo   ? new Date(filters.dateTo)   : null;
+  if (dateTo) dateTo.setHours(23, 59, 59, 999);
 
-    if (user.role === "Sales" && String(row[2]).toLowerCase() !== user.email.toLowerCase()) continue;
-
-    plans.push({
-      id:              String(row[0]).trim(),
-      salesRep:        String(row[1]).trim(),
-      email:           String(row[2]).trim(),
-      travelDate:      String(row[3]).trim(),
-      returnDate:      String(row[4]).trim(),
-      city:            String(row[5]).trim(),
-      clients:         String(row[6]).trim(),
-      purpose:         String(row[7]).trim(),
-      expectedRevenue: row[8],
-      estimatedDays:   row[9],
-      transport:       String(row[10]).trim(),
-      accommodation:   String(row[11]).trim(),
-      status:          String(row[12]).trim(),
-      approvedBy:      String(row[13]).trim(),
-      approvedAt:      String(row[14]).trim(),
-      notes:           String(row[15]).trim(),
-      submittedAt:     String(row[16]).trim(),
-      rowIndex:        i + 1
-    });
+  const matchIdx = [];
+  for (let i = 1; i < raw.length; i++) {
+    if (!raw[i][0]) continue;
+    if (user.role === "Sales" && String(raw[i][2]).toLowerCase() !== user.email.toLowerCase()) continue;
+    if (sFlt && String(raw[i][12]).toLowerCase() !== sFlt) continue;
+    if (dateFrom || dateTo) {
+      const d = new Date(raw[i][3]);
+      if (isNaN(d)) { matchIdx.push(i); continue; }
+      if (dateFrom && d < dateFrom) continue;
+      if (dateTo   && d > dateTo)   continue;
+    }
+    matchIdx.push(i);
   }
 
-  plans.reverse();
-  return { success: true, data: plans, count: plans.length };
+  const total      = matchIdx.length;
+  const totalPages = total > 0 ? Math.ceil(total / PAGE) : 0;
+
+  matchIdx.reverse();
+  const pageIdx = matchIdx.slice(page * PAGE, (page + 1) * PAGE);
+
+  const plans = pageIdx.map(function(i) {
+    const r = raw[i];
+    return {
+      id:              String(r[0]).trim(),
+      salesRep:        String(r[1]).trim(),
+      email:           String(r[2]).trim(),
+      travelDate:      String(r[3]).trim(),
+      returnDate:      String(r[4]).trim(),
+      city:            String(r[5]).trim(),
+      clients:         String(r[6]).trim(),
+      purpose:         String(r[7]).trim(),
+      expectedRevenue: r[8],
+      estimatedDays:   r[9],
+      transport:       String(r[10]).trim(),
+      accommodation:   String(r[11]).trim(),
+      status:          String(r[12]).trim(),
+      approvedBy:      String(r[13]).trim(),
+      approvedAt:      String(r[14]).trim(),
+      notes:           String(r[15]).trim(),
+      submittedAt:     String(r[16]).trim(),
+      rowIndex:        i + 1
+    };
+  });
+
+  return { success: true, data: plans, count: plans.length, total, page, pageSize: PAGE, totalPages };
 }
 
 function updateTravelStatus(data, user) {
@@ -267,44 +301,64 @@ function submitLead(data, user) {
 }
 
 function getLeads(user, filters) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEETS.LEADS);
-  const data = sheet.getDataRange().getValues();
+  const ss      = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet   = ss.getSheetByName(SHEETS.LEADS);
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return { success: true, data: [], count: 0, total: 0, totalPages: 0 };
 
-  const leads = [];
-  for (let i = 1; i < data.length; i++) {
-    if (!data[i][0]) continue;
-    const row = data[i];
+  const raw  = sheet.getRange(1, 1, lastRow, 17).getValues();
+  const PAGE = parseInt((filters && filters.pageSize) || 200);
+  const page = parseInt((filters && filters.page)     || 0);
+  const sFlt     = filters && filters.status   ? String(filters.status) : '';
+  const dateFrom = filters && filters.dateFrom ? new Date(filters.dateFrom) : null;
+  const dateTo   = filters && filters.dateTo   ? new Date(filters.dateTo)   : null;
+  if (dateTo) dateTo.setHours(23, 59, 59, 999);
 
-    // Sales sees only their own (assigned to them)
-    if (user.role === "Sales" && String(row[9]).toLowerCase() !== user.name.toLowerCase()) continue;
-
-    if (filters && filters.status && row[10] !== filters.status) continue;
-
-    leads.push({
-      id:             String(row[0]).trim(),
-      date:           String(row[1]).trim(),
-      leadSource:     String(row[2]).trim(),
-      clientName:     String(row[3]).trim(),
-      contactPerson:  String(row[4]).trim(),
-      phone:          String(row[5]).trim(),
-      email:          String(row[6]).trim(),
-      propertyType:   String(row[7]).trim(),
-      budget:         row[8],
-      assignedTo:     String(row[9]).trim(),
-      status:         String(row[10]).trim(),
-      followUpDate:   String(row[11]).trim(),
-      notes:          String(row[12]).trim(),
-      value:          row[13],
-      conversionDate: String(row[14]).trim(),
-      createdBy:      String(row[15]).trim(),
-      createdAt:      String(row[16]).trim(),
-      rowIndex:       i + 1
-    });
+  const matchIdx = [];
+  for (let i = 1; i < raw.length; i++) {
+    if (!raw[i][0]) continue;
+    if (user.role === "Sales" && String(raw[i][9]).toLowerCase() !== user.name.toLowerCase()) continue;
+    if (sFlt && raw[i][10] !== sFlt) continue;
+    if (dateFrom || dateTo) {
+      const d = new Date(raw[i][1]);
+      if (isNaN(d)) { matchIdx.push(i); continue; }
+      if (dateFrom && d < dateFrom) continue;
+      if (dateTo   && d > dateTo)   continue;
+    }
+    matchIdx.push(i);
   }
 
-  leads.reverse();
-  return { success: true, data: leads, count: leads.length };
+  const total      = matchIdx.length;
+  const totalPages = total > 0 ? Math.ceil(total / PAGE) : 0;
+
+  matchIdx.reverse();
+  const pageIdx = matchIdx.slice(page * PAGE, (page + 1) * PAGE);
+
+  const leads = pageIdx.map(function(i) {
+    const r = raw[i];
+    return {
+      id:             String(r[0]).trim(),
+      date:           String(r[1]).trim(),
+      leadSource:     String(r[2]).trim(),
+      clientName:     String(r[3]).trim(),
+      contactPerson:  String(r[4]).trim(),
+      phone:          String(r[5]).trim(),
+      email:          String(r[6]).trim(),
+      propertyType:   String(r[7]).trim(),
+      budget:         r[8],
+      assignedTo:     String(r[9]).trim(),
+      status:         String(r[10]).trim(),
+      followUpDate:   String(r[11]).trim(),
+      notes:          String(r[12]).trim(),
+      value:          r[13],
+      conversionDate: String(r[14]).trim(),
+      createdBy:      String(r[15]).trim(),
+      createdAt:      String(r[16]).trim(),
+      rowIndex:       i + 1
+    };
+  });
+
+  return { success: true, data: leads, count: leads.length, total, page, pageSize: PAGE, totalPages };
 }
 
 function updateLeadStatus(data, user) {
@@ -398,44 +452,67 @@ function getLastModified(data) {
 }
 
 function getBookings(user, filters) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEETS.BOOKINGS);
-  const data = sheet.getDataRange().getValues();
+  const ss      = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet   = ss.getSheetByName(SHEETS.BOOKINGS);
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return { success: true, data: [], count: 0, total: 0, totalPages: 0 };
 
-  const bookings = [];
-  for (let i = 1; i < data.length; i++) {
-    if (!data[i][0]) continue;
-    const row = data[i];
+  const raw  = sheet.getRange(1, 1, lastRow, 20).getValues();
+  const PAGE = parseInt((filters && filters.pageSize) || 200);
+  const page = parseInt((filters && filters.page)     || 0);
+  const sFlt     = filters && filters.status   ? String(filters.status) : '';
+  const dateFrom = filters && filters.dateFrom ? new Date(filters.dateFrom) : null;
+  const dateTo   = filters && filters.dateTo   ? new Date(filters.dateTo)   : null;
+  if (dateTo) dateTo.setHours(23, 59, 59, 999);
 
-    if (user.role === "Sales" && String(row[15]).toLowerCase() !== user.name.toLowerCase()) continue;
-
-    bookings.push({
-      id:            String(row[0]).trim(),
-      bookingDate:   String(row[1]).trim(),
-      clientName:    String(row[2]).trim(),
-      phone:         String(row[3]).trim(),
-      email:         String(row[4]).trim(),
-      propertyName:  String(row[5]).trim(),
-      propertyType:  String(row[6]).trim(),
-      checkIn:       String(row[7]).trim(),
-      checkOut:      String(row[8]).trim(),
-      nights:        row[9],
-      roomType:      String(row[10]).trim(),
-      ratePerNight:  row[11],
-      totalValue:    row[12],
-      commission:    row[13],
-      leadId:        String(row[14]).trim(),
-      salesRep:      String(row[15]).trim(),
-      status:        String(row[16]).trim(),
-      paymentStatus: String(row[17]).trim(),
-      notes:         String(row[18]).trim(),
-      createdAt:     String(row[19]).trim(),
-      rowIndex:      i + 1
-    });
+  const matchIdx = [];
+  for (let i = 1; i < raw.length; i++) {
+    if (!raw[i][0]) continue;
+    if (user.role === "Sales" && String(raw[i][15]).toLowerCase() !== user.name.toLowerCase()) continue;
+    if (sFlt && raw[i][16] !== sFlt) continue;
+    if (dateFrom || dateTo) {
+      const d = new Date(raw[i][1]);
+      if (isNaN(d)) { matchIdx.push(i); continue; }
+      if (dateFrom && d < dateFrom) continue;
+      if (dateTo   && d > dateTo)   continue;
+    }
+    matchIdx.push(i);
   }
 
-  bookings.reverse();
-  return { success: true, data: bookings, count: bookings.length };
+  const total      = matchIdx.length;
+  const totalPages = total > 0 ? Math.ceil(total / PAGE) : 0;
+
+  matchIdx.reverse();
+  const pageIdx = matchIdx.slice(page * PAGE, (page + 1) * PAGE);
+
+  const bookings = pageIdx.map(function(i) {
+    const r = raw[i];
+    return {
+      id:            String(r[0]).trim(),
+      bookingDate:   String(r[1]).trim(),
+      clientName:    String(r[2]).trim(),
+      phone:         String(r[3]).trim(),
+      email:         String(r[4]).trim(),
+      propertyName:  String(r[5]).trim(),
+      propertyType:  String(r[6]).trim(),
+      checkIn:       String(r[7]).trim(),
+      checkOut:      String(r[8]).trim(),
+      nights:        r[9],
+      roomType:      String(r[10]).trim(),
+      ratePerNight:  r[11],
+      totalValue:    r[12],
+      commission:    r[13],
+      leadId:        String(r[14]).trim(),
+      salesRep:      String(r[15]).trim(),
+      status:        String(r[16]).trim(),
+      paymentStatus: String(r[17]).trim(),
+      notes:         String(r[18]).trim(),
+      createdAt:     String(r[19]).trim(),
+      rowIndex:      i + 1
+    };
+  });
+
+  return { success: true, data: bookings, count: bookings.length, total, page, pageSize: PAGE, totalPages };
 }
 
 // ─── INCENTIVES ───────────────────────────────────────────────
