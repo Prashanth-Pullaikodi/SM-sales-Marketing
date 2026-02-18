@@ -837,7 +837,7 @@ function exportReport(data, user) {
     const result = getMonthlyReport({ month, year }, user);
     if (!result.success) return result;
 
-    csvContent = "Sales Rep,Revenue (RM),Bookings,Commission (RM),New Leads,Won Leads,Conversion %,DSR Count\n";
+    csvContent = "Sales Rep,Revenue (₹),Bookings,Commission (₹),New Leads,Won Leads,Conversion %,DSR Count\n";
     result.data.forEach(r => {
       csvContent += `"${r.rep}",${r.revenue},${r.bookings},${r.commission},${r.newLeads},${r.wonLeads},${r.conversionRate}%,${r.dsrCount}\n`;
     });

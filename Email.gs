@@ -220,7 +220,7 @@ function sendTravelApprovalEmail(id, data, user, rowIndex) {
       <tr><td><strong>Clients to Visit</strong></td><td>${data.clients || '-'}</td></tr>
       <tr><td><strong>Purpose</strong></td><td>${data.purpose}</td></tr>
       <tr><td><strong>Expected Revenue</strong></td>
-          <td style="font-weight:700;color:#2e7d32;">RM ${Number(data.expectedRevenue || 0).toLocaleString()}</td></tr>
+          <td style="font-weight:700;color:#2e7d32;">₹${Number(data.expectedRevenue || 0).toLocaleString()}</td></tr>
       <tr><td><strong>Estimated Duration</strong></td><td>${data.estimatedDays} Day(s)</td></tr>
       <tr><td><strong>Transport</strong></td><td>${data.transport || '-'}</td></tr>
       <tr><td><strong>Accommodation</strong></td><td>${data.accommodation || '-'}</td></tr>
@@ -333,7 +333,7 @@ function buildMonthlyReportEmail(stats) {
         <td style="padding:8px;">
           <div class="highlight-box">
             <div class="label">Monthly Revenue</div>
-            <div class="value">RM ${Number(stats.monthlyRevenue || 0).toLocaleString()}</div>
+            <div class="value">₹${Number(stats.monthlyRevenue || 0).toLocaleString()}</div>
           </div>
         </td>
         <td style="padding:8px;">
@@ -383,7 +383,7 @@ function buildMonthlyReportEmail(stats) {
       <tr>
         <td>Incentives Paid</td>
         <td>-</td>
-        <td>RM ${Number(stats.totalIncentives || 0).toLocaleString()}</td>
+        <td>₹${Number(stats.totalIncentives || 0).toLocaleString()}</td>
       </tr>
     </table>
 

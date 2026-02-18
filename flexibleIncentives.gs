@@ -236,7 +236,7 @@ function getIncentiveBreakdownForSales(totalSales) {
       totalIncentive += tierIncentive;
       
       breakdown.push({
-        tier: tier.label || ('RM ' + from.toLocaleString() + ' - ' + (to ? 'RM ' + to.toLocaleString() : 'Above')),
+        tier: tier.label || ('₹' + from.toLocaleString() + ' - ' + (to ? '₹' + to.toLocaleString() : 'Above')),
         amount: applicableAmount,
         rate: (rate * 100).toFixed(2) + '%',
         incentive: tierIncentive
@@ -373,7 +373,7 @@ function buildIncentivePDFWithTiers(records, tiers, filters) {
     html += '<div class="tier-box">' +
       '<strong>Current Incentive Tier Structure</strong>' +
       '<table>' +
-        '<tr><th>From (RM)</th><th>To (RM)</th><th>Rate</th><th>Label</th></tr>';
+        '<tr><th>From (₹)</th><th>To (₹)</th><th>Rate</th><th>Label</th></tr>';
     
     tiers.forEach(function(t) {
       html += '<tr>' +
@@ -391,7 +391,7 @@ function buildIncentivePDFWithTiers(records, tiers, filters) {
   html += '<table>' +
     '<thead><tr>' +
       '<th>ID</th><th>Sales Rep</th><th>Period</th>' +
-      '<th>Total Sales (RM)</th><th>Incentive (RM)</th><th>Status</th>' +
+      '<th>Total Sales (₹)</th><th>Incentive (₹)</th><th>Status</th>' +
     '</tr></thead><tbody>';
   
   records.forEach(function(r) {
