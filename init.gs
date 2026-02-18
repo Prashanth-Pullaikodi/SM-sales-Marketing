@@ -210,7 +210,7 @@ function addDemoData() {
        "Follow up next week", "", "", "Submitted", Utilities.formatDate(today, "Asia/Kuala_Lumpur", "yyyy-MM-dd HH:mm:ss")],
       ["DSR-002", Utilities.formatDate(new Date(today - 86400000), "Asia/Kuala_Lumpur", "yyyy-MM-dd"),
        "Nurul Ain", "nurul@sandalmist.com", "Penang", "Eastern & Oriental Hotel",
-       "+60-4-222-2000", "Contract Renewal Discussion", "Contract renewed - RM85,000",
+       "+60-4-222-2000", "Contract Renewal Discussion", "Contract renewed - ₹85,000",
        "Send invoice", "", "", "Submitted", Utilities.formatDate(today, "Asia/Kuala_Lumpur", "yyyy-MM-dd HH:mm:ss")]
     ];
     dsrSheet.getRange(2, 1, dsr.length, 14).setValues(dsr);

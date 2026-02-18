@@ -133,8 +133,8 @@ function generateIncentivePDF(filters, user) {
     '<table>' +
       '<thead><tr>' +
         '<th>ID</th><th>Sales Rep</th><th>Period</th>' +
-        '<th>Total Sales (RM)</th><th>Base Threshold (RM)</th><th>Eligible (RM)</th>' +
-        '<th>Rate</th><th>Incentive (RM)</th><th>Status</th>' +
+        '<th>Total Sales (₹)</th><th>Base Threshold (₹)</th><th>Eligible (₹)</th>' +
+        '<th>Rate</th><th>Incentive (₹)</th><th>Status</th>' +
       '</tr></thead>' +
       '<tbody>';
   
@@ -276,7 +276,7 @@ function buildMonthlyReportPDF(reportData, month, year) {
     '<h3 style="margin:15px 0 8px;">Summary Statistics</h3>' +
     '<table>' +
       '<tr><th>Metric</th><th>Value</th></tr>' +
-      '<tr><td>Total Revenue</td><td class="amount">RM ' + formatNumber(totals.revenue) + '</td></tr>' +
+      '<tr><td>Total Revenue</td><td class="amount">₹' + formatNumber(totals.revenue) + '</td></tr>' +
       '<tr><td>Total Bookings</td><td class="amount">' + totals.bookings + '</td></tr>' +
       '<tr><td>New Leads</td><td class="amount">' + totals.newLeads + '</td></tr>' +
       '<tr><td>Won Leads</td><td class="amount">' + totals.wonLeads + '</td></tr>' +
@@ -286,7 +286,7 @@ function buildMonthlyReportPDF(reportData, month, year) {
     '<h3 style="margin:20px 0 8px;">Team Performance Rankings</h3>' +
     '<table>' +
       '<thead><tr>' +
-        '<th>Rank</th><th>Sales Rep</th><th>Revenue (RM)</th><th>Bookings</th>' +
+        '<th>Rank</th><th>Sales Rep</th><th>Revenue (₹)</th><th>Bookings</th>' +
         '<th>Leads</th><th>Won</th><th>Conv %</th><th>DSR</th>' +
       '</tr></thead><tbody>';
   
@@ -500,7 +500,7 @@ function generateTravelPDF(filters, user) {
     (repFilter ? ' | Rep: ' + filters.salesRep : '') +
     (filters.dateFrom ? ' | Period: ' + periodLabel : '') +
     ' | Total: ' + rows.length + ' records' +
-    ' | Expected Revenue: RM ' + formatNumber(total) + '</div>' +
+    ' | Expected Revenue: ₹' + formatNumber(total) + '</div>' +
     '<table><thead><tr>' +
       '<th>ID</th><th>Sales Rep</th><th>Travel Date</th><th>City</th>' +
       '<th>Purpose</th><th>Exp. Revenue</th><th>Days</th><th>Status</th>' +
@@ -513,14 +513,14 @@ function generateTravelPDF(filters, user) {
       '<td>' + Utilities.formatDate(new Date(r[3]), 'Asia/Kuala_Lumpur', 'dd-MM-yyyy') + '</td>' +
       '<td>' + r[5] + '</td>' +
       '<td style="max-width:160px;">' + String(r[7]).substring(0, 80) + '</td>' +
-      '<td class="amt">RM ' + formatNumber(r[8]) + '</td>' +
+      '<td class="amt">₹' + formatNumber(r[8]) + '</td>' +
       '<td style="text-align:center;">' + r[9] + 'd</td>' +
       '<td>' + statusBadgePDF(r[12]) + '</td>' +
     '</tr>';
   });
 
   html += '<tr class="sum"><td colspan="5"><b>TOTAL</b></td>' +
-    '<td class="amt">RM ' + formatNumber(total) + '</td><td colspan="2"></td></tr>';
+    '<td class="amt">₹' + formatNumber(total) + '</td><td colspan="2"></td></tr>';
   html += '</tbody></table>' + pdfFooter(rows.length, 'travel plan');
 
   var file = savePDF(html, 'Travel_Report_' + Utilities.formatDate(new Date(), 'UTC', 'yyyyMMdd_HHmmss') + '.pdf');
@@ -534,10 +534,10 @@ function buildLeadsReportPDF(leads, month, year) {
   var total = leads.reduce(function(s, r) { return s + (parseFloat(r.value) || 0); }, 0);
   var html  = pdfHeader('Leads Report', month + ' ' + year) +
     '<div class="meta"><strong>Period:</strong> ' + month + ' ' + year +
-    ' | Total leads: ' + leads.length + ' | Total value: RM ' + formatNumber(total) + '</div>' +
+    ' | Total leads: ' + leads.length + ' | Total value: ₹' + formatNumber(total) + '</div>' +
     '<table><thead><tr>' +
       '<th>ID</th><th>Date</th><th>Client</th><th>Source</th>' +
-      '<th>Assigned To</th><th>Budget (RM)</th><th>Status</th>' +
+      '<th>Assigned To</th><th>Budget (₹)</th><th>Status</th>' +
     '</tr></thead><tbody>';
 
   leads.forEach(function(r) {
@@ -547,13 +547,13 @@ function buildLeadsReportPDF(leads, month, year) {
       '<td><b>' + r.client + '</b></td>' +
       '<td>' + r.source + '</td>' +
       '<td>' + r.assignedTo + '</td>' +
-      '<td class="amt">' + (r.value ? 'RM ' + formatNumber(r.value) : '-') + '</td>' +
+      '<td class="amt">' + (r.value ? '₹' + formatNumber(r.value) : '-') + '</td>' +
       '<td>' + statusBadgePDF(r.status) + '</td>' +
     '</tr>';
   });
 
   html += '<tr class="sum"><td colspan="5"><b>TOTAL</b></td>' +
-    '<td class="amt">RM ' + formatNumber(total) + '</td><td></td></tr>';
+    '<td class="amt">₹' + formatNumber(total) + '</td><td></td></tr>';
   html += '</tbody></table>' + pdfFooter(leads.length, 'lead');
   return html;
 }
@@ -599,10 +599,10 @@ function generateLeadsPDF(filters, user) {
     (repFilter ? ' | Rep: ' + filters.salesRep : '') +
     (filters.dateFrom ? ' | Period: ' + periodLabel : '') +
     ' | Total: ' + leads.length + ' records' +
-    ' | Total Value: RM ' + formatNumber(totalVal) + '</div>' +
+    ' | Total Value: ₹' + formatNumber(totalVal) + '</div>' +
     '<table><thead><tr>' +
       '<th>ID</th><th>Date</th><th>Client</th><th>Source</th>' +
-      '<th>Assigned To</th><th>Budget (RM)</th><th>Status</th>' +
+      '<th>Assigned To</th><th>Budget (₹)</th><th>Status</th>' +
     '</tr></thead><tbody>';
 
   leads.forEach(function(r) {
@@ -612,13 +612,13 @@ function generateLeadsPDF(filters, user) {
       '<td><b>' + r[3] + '</b></td>' +
       '<td>' + r[2] + '</td>' +
       '<td>' + r[9] + '</td>' +
-      '<td class="amt">' + (r[8] ? 'RM ' + formatNumber(r[8]) : '-') + '</td>' +
+      '<td class="amt">' + (r[8] ? '₹' + formatNumber(r[8]) : '-') + '</td>' +
       '<td>' + statusBadgePDF(r[10]) + '</td>' +
     '</tr>';
   });
 
   html += '<tr class="sum"><td colspan="5"><b>TOTAL</b></td>' +
-    '<td class="amt">RM ' + formatNumber(totalVal) + '</td><td></td></tr>';
+    '<td class="amt">₹' + formatNumber(totalVal) + '</td><td></td></tr>';
   html += '</tbody></table>' + pdfFooter(leads.length, 'lead');
 
   var filename = 'Leads_Report_' + Utilities.formatDate(new Date(), 'UTC', 'yyyyMMdd_HHmmss') + '.pdf';
@@ -633,10 +633,10 @@ function buildBookingsReportPDF(bookings, month, year) {
   var total = bookings.reduce(function(s, r) { return s + (parseFloat(r.totalValue) || 0); }, 0);
   var html  = pdfHeader('Bookings Report', month + ' ' + year) +
     '<div class="meta"><strong>Period:</strong> ' + month + ' ' + year +
-    ' | Total bookings: ' + bookings.length + ' | Total revenue: RM ' + formatNumber(total) + '</div>' +
+    ' | Total bookings: ' + bookings.length + ' | Total revenue: ₹' + formatNumber(total) + '</div>' +
     '<table><thead><tr>' +
       '<th>ID</th><th>Date</th><th>Client</th><th>Property</th>' +
-      '<th>Check-In</th><th>Nights</th><th>Revenue (RM)</th>' +
+      '<th>Check-In</th><th>Nights</th><th>Revenue (₹)</th>' +
       '<th>Sales Rep</th><th>Status</th>' +
     '</tr></thead><tbody>';
 
@@ -648,14 +648,14 @@ function buildBookingsReportPDF(bookings, month, year) {
       '<td>' + r.property + '</td>' +
       '<td>' + Utilities.formatDate(new Date(r.checkIn || r.date), 'Asia/Kuala_Lumpur', 'dd-MM-yyyy') + '</td>' +
       '<td style="text-align:center;">' + (r.nights || '-') + '</td>' +
-      '<td class="amt">RM ' + formatNumber(r.totalValue) + '</td>' +
+      '<td class="amt">₹' + formatNumber(r.totalValue) + '</td>' +
       '<td>' + r.salesRep + '</td>' +
       '<td>' + statusBadgePDF(r.status) + '</td>' +
     '</tr>';
   });
 
   html += '<tr class="sum"><td colspan="6"><b>TOTAL REVENUE</b></td>' +
-    '<td class="amt">RM ' + formatNumber(total) + '</td><td colspan="2"></td></tr>';
+    '<td class="amt">₹' + formatNumber(total) + '</td><td colspan="2"></td></tr>';
   html += '</tbody></table>' + pdfFooter(bookings.length, 'booking');
   return html;
 }
@@ -701,10 +701,10 @@ function generateBookingsPDF(filters, user) {
     (repFilter ? ' | Rep: ' + filters.salesRep : '') +
     (filters.dateFrom ? ' | Period: ' + periodLabel : '') +
     ' | Total: ' + bookings.length + ' records' +
-    ' | Total Revenue: RM ' + formatNumber(totalRev) + '</div>' +
+    ' | Total Revenue: ₹' + formatNumber(totalRev) + '</div>' +
     '<table><thead><tr>' +
       '<th>ID</th><th>Date</th><th>Client</th><th>Property</th>' +
-      '<th>Check-In</th><th>Nights</th><th>Revenue (RM)</th>' +
+      '<th>Check-In</th><th>Nights</th><th>Revenue (₹)</th>' +
       '<th>Sales Rep</th><th>Status</th>' +
     '</tr></thead><tbody>';
 
@@ -716,14 +716,14 @@ function generateBookingsPDF(filters, user) {
       '<td>' + r[5] + '</td>' +
       '<td>' + (r[7] ? Utilities.formatDate(new Date(r[7]), 'Asia/Kuala_Lumpur', 'dd-MM-yyyy') : '-') + '</td>' +
       '<td style="text-align:center;">' + (r[9] || '-') + '</td>' +
-      '<td class="amt">RM ' + formatNumber(r[12]) + '</td>' +
+      '<td class="amt">₹' + formatNumber(r[12]) + '</td>' +
       '<td>' + r[15] + '</td>' +
       '<td>' + statusBadgePDF(r[16]) + '</td>' +
     '</tr>';
   });
 
   html += '<tr class="sum"><td colspan="6"><b>TOTAL REVENUE</b></td>' +
-    '<td class="amt">RM ' + formatNumber(totalRev) + '</td><td colspan="2"></td></tr>';
+    '<td class="amt">₹' + formatNumber(totalRev) + '</td><td colspan="2"></td></tr>';
   html += '</tbody></table>' + pdfFooter(bookings.length, 'booking');
 
   var filename = 'Bookings_Report_' + Utilities.formatDate(new Date(), 'UTC', 'yyyyMMdd_HHmmss') + '.pdf';

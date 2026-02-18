@@ -153,7 +153,7 @@ function generateTeamPerformanceReport(month, year) {
   <div class="kpi-grid">
     <div class="kpi-card">
       <div class="label">Total Revenue</div>
-      <div class="value">RM ${formatNumber(grandRevenue)}</div>
+      <div class="value">₹${formatNumber(grandRevenue)}</div>
       <div class="sub">All confirmed bookings</div>
     </div>
     <div class="kpi-card">
@@ -174,7 +174,7 @@ function generateTeamPerformanceReport(month, year) {
       <tr>
         <th>Rank</th>
         <th>Sales Rep</th>
-        <th>Revenue (RM)</th>
+        <th>Revenue (₹)</th>
         <th>Bookings</th>
         <th>New Leads</th>
         <th>Won Leads</th>
@@ -192,7 +192,7 @@ function generateTeamPerformanceReport(month, year) {
         <td><span class="rank ${rankClass}">${i+1}</span></td>
         <td><strong>${p.rep}</strong></td>
         <td>
-          <div>RM ${formatNumber(p.revenue)}</div>
+          <div>₹${formatNumber(p.revenue)}</div>
           <div class="revenue-bar">
             <div class="revenue-fill" style="width:${barWidth}%"></div>
           </div>
@@ -212,7 +212,7 @@ function generateTeamPerformanceReport(month, year) {
     <table>
       <tr>
         <th>Sales Rep</th>
-        <th>Revenue (RM)</th>
+        <th>Revenue (₹)</th>
         <th>Commission (10%)</th>
         <th>Incentive Eligible</th>
       </tr>
@@ -221,16 +221,16 @@ function generateTeamPerformanceReport(month, year) {
         return `
       <tr>
         <td>${p.rep}</td>
-        <td>RM ${formatNumber(p.revenue)}</td>
-        <td>RM ${formatNumber(p.commission)}</td>
-        <td>RM ${formatNumber(incentive)}</td>
+        <td>₹${formatNumber(p.revenue)}</td>
+        <td>₹${formatNumber(p.commission)}</td>
+        <td>₹${formatNumber(incentive)}</td>
       </tr>`;
       }).join("")}
       <tr style="font-weight:700;background:#f0f4ff;">
         <td>TOTAL</td>
-        <td>RM ${formatNumber(grandRevenue)}</td>
-        <td>RM ${formatNumber(rows.reduce((s,p)=>s+p.commission,0))}</td>
-        <td>RM ${formatNumber(rows.reduce((s,p)=>s+Math.max(0,p.revenue-500000)*0.01,0))}</td>
+        <td>₹${formatNumber(grandRevenue)}</td>
+        <td>₹${formatNumber(rows.reduce((s,p)=>s+p.commission,0))}</td>
+        <td>₹${formatNumber(rows.reduce((s,p)=>s+Math.max(0,p.revenue-500000)*0.01,0))}</td>
       </tr>
     </table>
   </div>
