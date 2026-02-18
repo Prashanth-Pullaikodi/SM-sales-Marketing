@@ -26,6 +26,11 @@ var SHEETS = {
 
 function doGet(e) {
   try {
+    // ── Handle email Approve / Reject button clicks ──────────────
+    if (e && e.parameter && e.parameter.tvAction) {
+      return handleTravelEmailAction(e.parameter);
+    }
+
     // Auto-init sheets if missing
     if (!isSystemInitialized()) {
       initSystem();
@@ -144,5 +149,111 @@ function getErrorPage(msg) {
     '<h2>System Error</h2>' +
     '<p>Something went wrong. Check the Apps Script execution log.</p>' +
     '<pre>' + msg + '</pre></div></body></html>';
+}
+
+// ─── EMAIL ACTION HANDLER (Approve / Reject from email link) ──
+
+function handleTravelEmailAction(params) {
+  var action   = params.tvAction;          // 'approve' or 'reject'
+  var id       = params.id    || '';
+  var token    = params.token || '';
+
+  var styleBase =
+    'body{font-family:Segoe UI,Arial,sans-serif;background:#f0f2f5;display:flex;' +
+    'align-items:center;justify-content:center;min-height:100vh;margin:0;}' +
+    '.card{background:#fff;border-radius:14px;padding:40px;text-align:center;' +
+    'max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,.12);}' +
+    'h2{margin:12px 0 8px;}p{color:#555;font-size:14px;line-height:1.6;}' +
+    '.id{font-family:monospace;background:#f5f5f5;padding:4px 12px;border-radius:20px;' +
+    'font-size:13px;display:inline-block;margin:6px 0;}';
+
+  // ── Validate token ─────────────────────────────────────────
+  var stored = PropertiesService.getScriptProperties().getProperty('tv_token_' + id);
+  if (!stored) {
+    return HtmlService.createHtmlOutput(
+      '<!DOCTYPE html><html><head><style>' + styleBase + '</style></head><body>' +
+      '<div class="card"><div style="font-size:48px;">⚠️</div>' +
+      '<h2 style="color:#c62828;">Invalid Link</h2>' +
+      '<p>This approval link is invalid or has already been removed.</p></div></body></html>'
+    ).setTitle('Invalid Link').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
+  var storedObj;
+  try { storedObj = JSON.parse(stored); } catch(e) { storedObj = {}; }
+
+  if (storedObj.token !== token) {
+    return HtmlService.createHtmlOutput(
+      '<!DOCTYPE html><html><head><style>' + styleBase + '</style></head><body>' +
+      '<div class="card"><div style="font-size:48px;">🔒</div>' +
+      '<h2 style="color:#c62828;">Security Error</h2>' +
+      '<p>The token in this link does not match our records.</p></div></body></html>'
+    ).setTitle('Security Error').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
+  if (Date.now() > storedObj.expires) {
+    return HtmlService.createHtmlOutput(
+      '<!DOCTYPE html><html><head><style>' + styleBase + '</style></head><body>' +
+      '<div class="card"><div style="font-size:48px;">⏰</div>' +
+      '<h2 style="color:#e65100;">Link Expired</h2>' +
+      '<p>This approval link has expired. Please action the request from inside the system.</p>' +
+      '</div></body></html>'
+    ).setTitle('Link Expired').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
+  if (storedObj.used) {
+    return HtmlService.createHtmlOutput(
+      '<!DOCTYPE html><html><head><style>' + styleBase + '</style></head><body>' +
+      '<div class="card"><div style="font-size:48px;">✅</div>' +
+      '<h2 style="color:#2e7d32;">Already Processed</h2>' +
+      '<p>Travel plan <span class="id">' + id + '</span> was already <strong>' +
+      storedObj.decision + '</strong>.</p>' +
+      '</div></body></html>'
+    ).setTitle('Already Done').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
+  // ── Authenticate approver ──────────────────────────────────
+  var approverEmail = Session.getActiveUser().getEmail();
+  if (!approverEmail) {
+    return HtmlService.createHtmlOutput(getLoginPage())
+      .setTitle(APP_NAME).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+  var approver = getUserByEmail(approverEmail);
+  if (!approver || (approver.role !== 'Admin' && approver.role !== 'HR')) {
+    return HtmlService.createHtmlOutput(getAccessDeniedPage(approverEmail))
+      .setTitle('Access Denied').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
+  // ── Perform action ────────────────────────────────────────
+  var newStatus = (action === 'approve') ? 'Approved' : 'Rejected';
+  var notes     = (action === 'reject')  ? 'Rejected via email link' : '';
+  try {
+    updateTravelStatus(
+      { rowIndex: storedObj.rowIndex, status: newStatus, notes: notes },
+      approver
+    );
+    // Mark token used
+    storedObj.used     = true;
+    storedObj.decision = newStatus;
+    PropertiesService.getScriptProperties().setProperty('tv_token_' + id, JSON.stringify(storedObj));
+
+    var icon  = newStatus === 'Approved' ? '✅' : '❌';
+    var color = newStatus === 'Approved' ? '#2e7d32' : '#c62828';
+    return HtmlService.createHtmlOutput(
+      '<!DOCTYPE html><html><head><style>' + styleBase + '</style></head><body>' +
+      '<div class="card">' +
+      '<img src="https://sandalmistresort.com/wp-content/uploads/2024/09/logo-white.png"' +
+      ' style="height:40px;background:#1565c0;border-radius:6px;padding:6px 12px;margin-bottom:16px;">' +
+      '<div style="font-size:48px;">' + icon + '</div>' +
+      '<h2 style="color:' + color + ';">Travel Plan ' + newStatus + '</h2>' +
+      '<p>Travel plan <span class="id">' + id + '</span> has been ' +
+      '<strong>' + newStatus.toLowerCase() + '</strong> by ' + approver.name + '.</p>' +
+      '<p style="margin-top:16px;font-size:12px;color:#888;">The sales representative will be notified automatically.</p>' +
+      '</div></body></html>'
+    ).setTitle('Travel ' + newStatus).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+
+  } catch (err) {
+    return HtmlService.createHtmlOutput(getErrorPage(err.message))
+      .setTitle('Error').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
 }
 

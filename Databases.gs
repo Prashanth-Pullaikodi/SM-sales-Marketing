@@ -144,10 +144,11 @@ function submitTravelPlan(data, user) {
   ];
 
   sheet.appendRow(row);
+  const newRowIndex = sheet.getLastRow();
 
-  // Email HR for approval
+  // Email HR for approval (pass rowIndex so email buttons work directly)
   try {
-    sendTravelApprovalEmail(id, data, user);
+    sendTravelApprovalEmail(id, data, user, newRowIndex);
   } catch (e) {
     Logger.log("Travel email error: " + e.message);
   }
@@ -380,8 +381,20 @@ function submitBooking(data, user) {
 
   sheet.appendRow(row);
 
+  // Touch timestamp so live-poll clients know to refresh
+  PropertiesService.getScriptProperties().setProperty(
+    'bookings_modified', new Date().toISOString()
+  );
+
   logActivity(user.email, "SUBMIT_BOOKING", "Booking created: " + id);
   return { success: true, message: "Booking created successfully", id: id };
+}
+
+function getLastModified(data) {
+  var sheet = (data && data.sheet) || 'bookings';
+  var key = sheet + '_modified';
+  var ts  = PropertiesService.getScriptProperties().getProperty(key) || '';
+  return { success: true, timestamp: ts };
 }
 
 function getBookings(user, filters) {

@@ -69,6 +69,8 @@ function handleClientRequest(action, dataJson) {
         return getBookings(user, data);
       case 'submitBooking':
         return submitBooking(data, user);
+      case 'getLastModified':
+        return getLastModified(data);
 
       // Reports
       case 'getMonthlyReport':
