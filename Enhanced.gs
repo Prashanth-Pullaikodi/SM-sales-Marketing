@@ -319,62 +319,445 @@ function buildMonthlyReportPDF(reportData, month, year) {
   return html;
 }
 
-function getLeadsForPeriod(month, year) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(SHEETS.LEADS);
-  var data = sheet.getDataRange().getValues();
-  
+function getLeadsForPeriod(month, year, status) {
+  var ss      = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet   = ss.getSheetByName(SHEETS.LEADS);
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return [];
+  var data     = sheet.getRange(1, 1, lastRow, 17).getValues();
+  var monthInt = month ? parseInt(month) : 0;
+  var yearInt  = year  ? parseInt(year)  : 0;
+  var statusFlt = (status || '').toLowerCase();
+
   var leads = [];
-  var monthInt = parseInt(month);
-  var yearInt = parseInt(year);
-  
   for (var i = 1; i < data.length; i++) {
     if (!data[i][0]) continue;
-    var d = new Date(data[i][1]);
-    if (d.getMonth() + 1 === monthInt && d.getFullYear() === yearInt) {
-      leads.push({
-        id: data[i][0],
-        date: data[i][1],
-        source: data[i][2],
-        client: data[i][3],
-        assignedTo: data[i][9],
-        status: data[i][10],
-        value: data[i][13]
-      });
+    var r = data[i];
+    if (monthInt && yearInt) {
+      var d = new Date(r[1]);
+      if (d.getMonth() + 1 !== monthInt || d.getFullYear() !== yearInt) continue;
     }
+    if (statusFlt && String(r[10]).toLowerCase() !== statusFlt) continue;
+    leads.push({
+      id: r[0], date: r[1], source: r[2], client: r[3],
+      contactPerson: r[4], assignedTo: r[9], status: r[10], value: r[13]
+    });
   }
+  leads.reverse();
   return leads;
 }
 
-function buildLeadsReportPDF(leads, month, year) {
-  // Similar PDF structure for leads
-  return '<!DOCTYPE html><html><body><h1>Leads Report ' + month + '/' + year + '</h1></body></html>';
+// ─── SHARED PDF HELPERS ───────────────────────────────────────
+
+function pdfCss() {
+  return '<style>' +
+    'body{font-family:Arial,sans-serif;margin:28px;font-size:11px;color:#222;}' +
+    '.ph{text-align:center;border-bottom:3px solid #1565c0;padding-bottom:12px;margin-bottom:18px;}' +
+    '.ph img{height:36px;vertical-align:middle;margin-right:10px;}' +
+    '.ph h1{display:inline;color:#1a237e;font-size:18px;vertical-align:middle;}' +
+    '.ph p{margin:4px 0 0;font-size:10px;color:#666;}' +
+    '.meta{background:#f0f4ff;padding:8px 12px;border-radius:5px;margin-bottom:14px;font-size:10px;}' +
+    'table{width:100%;border-collapse:collapse;margin:10px 0;font-size:10px;}' +
+    'th{background:#1565c0;color:#fff;padding:7px 8px;text-align:left;}' +
+    'td{padding:6px 8px;border-bottom:1px solid #eee;}' +
+    'tr:nth-child(even) td{background:#f8fafc;}' +
+    '.sum td{background:#e8f4fd;font-weight:700;}' +
+    '.amt{text-align:right;font-weight:700;color:#2e7d32;}' +
+    '.foot{text-align:center;margin-top:18px;font-size:9px;color:#999;' +
+      'border-top:1px solid #eee;padding-top:8px;}' +
+    '.badge{display:inline-block;padding:2px 7px;border-radius:10px;font-size:9px;font-weight:600;}' +
+    '.b-pending{background:#fff3e0;color:#e65100;}' +
+    '.b-approved,.b-confirmed,.b-completed,.b-won{background:#e8f5e9;color:#2e7d32;}' +
+    '.b-rejected,.b-lost{background:#fce4ec;color:#c62828;}' +
+    '.b-new,.b-qualified{background:#e3f2fd;color:#1565c0;}' +
+    '</style>';
 }
 
-function getBookingsForPeriod(month, year) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(SHEETS.BOOKINGS);
-  var data = sheet.getDataRange().getValues();
-  
+function pdfHeader(title, period) {
+  var ts = Utilities.formatDate(new Date(), 'Asia/Kuala_Lumpur', 'dd MMM yyyy, hh:mm a');
+  return '<!DOCTYPE html><html><head><meta charset="UTF-8">' + pdfCss() + '</head><body>' +
+    '<div class="ph">' +
+      '<img src="https://sandalmistresort.com/wp-content/uploads/2024/09/logo-white.png"' +
+      ' style="height:36px;background:#1565c0;border-radius:4px;padding:4px 8px;">' +
+      '<h1>Sandal Mist — ' + title + '</h1>' +
+      (period ? '<p>Period: ' + period + '</p>' : '') +
+      '<p>Generated: ' + ts + '</p>' +
+    '</div>';
+}
+
+function pdfFooter(count, label) {
+  return '<div class="foot"><p>Sandal Mist Sales &amp; HR Management System | Confidential</p>' +
+    '<p>This report contains ' + count + ' ' + (label || 'record') + (count !== 1 ? 's' : '') + '</p>' +
+    '</div></body></html>';
+}
+
+function statusBadgePDF(status) {
+  var cls = (status || '').toLowerCase().replace(/\s+/g, '');
+  return '<span class="badge b-' + cls + '">' + (status || '') + '</span>';
+}
+
+function savePDF(html, filename) {
+  var blob    = Utilities.newBlob(html, 'text/html', filename.replace('.pdf', '.html'));
+  var pdfBlob = blob.getAs('application/pdf').setName(filename);
+  return getSubFolder('Reports').createFile(pdfBlob);
+}
+
+// ─── DSR LIST PDF ─────────────────────────────────────────────
+
+function generateDSRListPDF(filters, user) {
+  requireHROrAdmin(user);
+
+  var ss    = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEETS.DAILY_REPORTS);
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return { success: false, error: 'No DSR records found' };
+
+  var raw      = sheet.getRange(1, 1, lastRow, 14).getValues();
+  var monthInt = filters.month ? parseInt(filters.month) : 0;
+  var yearInt  = filters.year  ? parseInt(filters.year)  : 0;
+  var repFilter = (filters.salesRep || '').toLowerCase();
+
+  var rows = [];
+  for (var i = 1; i < raw.length; i++) {
+    if (!raw[i][0]) continue;
+    var r = raw[i];
+    if (monthInt && yearInt) {
+      var d = new Date(r[1]);
+      if (d.getMonth() + 1 !== monthInt || d.getFullYear() !== yearInt) continue;
+    }
+    if (repFilter && String(r[2]).toLowerCase().indexOf(repFilter) === -1) continue;
+    rows.push(r);
+  }
+  rows.reverse();
+
+  var period = monthInt ? (filters.month + '/' + filters.year) : 'All Periods';
+  var html = pdfHeader('Daily Sales Reports', period) +
+    '<div class="meta"><strong>Filter:</strong> Period: ' + period +
+    (repFilter ? ' | Rep: ' + filters.salesRep : '') +
+    ' | Total: ' + rows.length + ' records</div>' +
+    '<table><thead><tr>' +
+      '<th>ID</th><th>Date</th><th>Sales Rep</th><th>Location</th>' +
+      '<th>Client</th><th>Purpose</th><th>Result</th><th>Status</th>' +
+    '</tr></thead><tbody>';
+
+  rows.forEach(function(r) {
+    html += '<tr>' +
+      '<td style="font-family:monospace;color:#1565c0;">' + r[0] + '</td>' +
+      '<td>' + Utilities.formatDate(new Date(r[1]), 'Asia/Kuala_Lumpur', 'dd-MM-yyyy') + '</td>' +
+      '<td><b>' + r[2] + '</b></td><td>' + r[4] + '</td>' +
+      '<td>' + r[5] + '</td>' +
+      '<td style="max-width:160px;">' + String(r[7]).substring(0, 80) + (r[7].length > 80 ? '...' : '') + '</td>' +
+      '<td style="max-width:140px;">' + String(r[8]).substring(0, 70) + (r[8].length > 70 ? '...' : '') + '</td>' +
+      '<td>' + statusBadgePDF(r[12]) + '</td>' +
+    '</tr>';
+  });
+
+  html += '</tbody></table>' + pdfFooter(rows.length, 'daily report');
+  var file = savePDF(html, 'DSR_Report_' + Utilities.formatDate(new Date(), 'UTC', 'yyyyMMdd_HHmmss') + '.pdf');
+  logActivity(user.email, 'EXPORT_DSR_PDF', rows.length + ' records | ' + period);
+  return { success: true, downloadUrl: file.getUrl(), filename: file.getName(), recordCount: rows.length };
+}
+
+// ─── TRAVEL PLANS PDF ────────────────────────────────────────
+
+function generateTravelPDF(filters, user) {
+  requireHROrAdmin(user);
+
+  var ss    = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEETS.TRAVEL_PLANS);
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return { success: false, error: 'No travel records found' };
+
+  var raw       = sheet.getRange(1, 1, lastRow, 17).getValues();
+  var statusFlt = (filters.status || '').toLowerCase();
+  var repFilter = (filters.salesRep || '').toLowerCase();
+
+  var dateFrom = filters.dateFrom ? new Date(filters.dateFrom) : null;
+  var dateTo   = filters.dateTo   ? new Date(filters.dateTo)   : null;
+  if (dateTo) dateTo.setHours(23, 59, 59, 999);
+
+  var rows = [], total = 0;
+  for (var i = 1; i < raw.length; i++) {
+    if (!raw[i][0]) continue;
+    var r = raw[i];
+    if (statusFlt && String(r[12]).toLowerCase() !== statusFlt) continue;
+    if (repFilter && String(r[1]).toLowerCase().indexOf(repFilter) === -1) continue;
+    if (dateFrom || dateTo) {
+      var d = new Date(r[3]);
+      if (!isNaN(d)) {
+        if (dateFrom && d < dateFrom) continue;
+        if (dateTo   && d > dateTo)   continue;
+      }
+    }
+    rows.push(r);
+    total += parseFloat(r[8]) || 0;
+  }
+  rows.reverse();
+
+  var periodLabel = filters.dateFrom ? (filters.dateFrom + ' to ' + (filters.dateTo || 'now')) : 'All';
+  var html = pdfHeader('Travel Plans Report', periodLabel) +
+    '<div class="meta"><strong>Filter:</strong> Status: ' + (filters.status || 'All') +
+    (repFilter ? ' | Rep: ' + filters.salesRep : '') +
+    (filters.dateFrom ? ' | Period: ' + periodLabel : '') +
+    ' | Total: ' + rows.length + ' records' +
+    ' | Expected Revenue: RM ' + formatNumber(total) + '</div>' +
+    '<table><thead><tr>' +
+      '<th>ID</th><th>Sales Rep</th><th>Travel Date</th><th>City</th>' +
+      '<th>Purpose</th><th>Exp. Revenue</th><th>Days</th><th>Status</th>' +
+    '</tr></thead><tbody>';
+
+  rows.forEach(function(r) {
+    html += '<tr>' +
+      '<td style="font-family:monospace;color:#1565c0;">' + r[0] + '</td>' +
+      '<td><b>' + r[1] + '</b></td>' +
+      '<td>' + Utilities.formatDate(new Date(r[3]), 'Asia/Kuala_Lumpur', 'dd-MM-yyyy') + '</td>' +
+      '<td>' + r[5] + '</td>' +
+      '<td style="max-width:160px;">' + String(r[7]).substring(0, 80) + '</td>' +
+      '<td class="amt">RM ' + formatNumber(r[8]) + '</td>' +
+      '<td style="text-align:center;">' + r[9] + 'd</td>' +
+      '<td>' + statusBadgePDF(r[12]) + '</td>' +
+    '</tr>';
+  });
+
+  html += '<tr class="sum"><td colspan="5"><b>TOTAL</b></td>' +
+    '<td class="amt">RM ' + formatNumber(total) + '</td><td colspan="2"></td></tr>';
+  html += '</tbody></table>' + pdfFooter(rows.length, 'travel plan');
+
+  var file = savePDF(html, 'Travel_Report_' + Utilities.formatDate(new Date(), 'UTC', 'yyyyMMdd_HHmmss') + '.pdf');
+  logActivity(user.email, 'EXPORT_TRAVEL_PDF', rows.length + ' records');
+  return { success: true, downloadUrl: file.getUrl(), filename: file.getName(), recordCount: rows.length };
+}
+
+// ─── LEADS PDF ────────────────────────────────────────────────
+
+function buildLeadsReportPDF(leads, month, year) {
+  var total = leads.reduce(function(s, r) { return s + (parseFloat(r.value) || 0); }, 0);
+  var html  = pdfHeader('Leads Report', month + ' ' + year) +
+    '<div class="meta"><strong>Period:</strong> ' + month + ' ' + year +
+    ' | Total leads: ' + leads.length + ' | Total value: RM ' + formatNumber(total) + '</div>' +
+    '<table><thead><tr>' +
+      '<th>ID</th><th>Date</th><th>Client</th><th>Source</th>' +
+      '<th>Assigned To</th><th>Budget (RM)</th><th>Status</th>' +
+    '</tr></thead><tbody>';
+
+  leads.forEach(function(r) {
+    html += '<tr>' +
+      '<td style="font-family:monospace;color:#1565c0;">' + r.id + '</td>' +
+      '<td>' + Utilities.formatDate(new Date(r.date), 'Asia/Kuala_Lumpur', 'dd-MM-yyyy') + '</td>' +
+      '<td><b>' + r.client + '</b></td>' +
+      '<td>' + r.source + '</td>' +
+      '<td>' + r.assignedTo + '</td>' +
+      '<td class="amt">' + (r.value ? 'RM ' + formatNumber(r.value) : '-') + '</td>' +
+      '<td>' + statusBadgePDF(r.status) + '</td>' +
+    '</tr>';
+  });
+
+  html += '<tr class="sum"><td colspan="5"><b>TOTAL</b></td>' +
+    '<td class="amt">RM ' + formatNumber(total) + '</td><td></td></tr>';
+  html += '</tbody></table>' + pdfFooter(leads.length, 'lead');
+  return html;
+}
+
+function generateLeadsPDF(filters, user) {
+  requireHROrAdmin(user);
+
+  var ss      = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet   = ss.getSheetByName(SHEETS.LEADS);
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return { success: false, error: 'No lead records found' };
+
+  var raw       = sheet.getRange(1, 1, lastRow, 17).getValues();
+  var statusFlt = (filters.status   || '').toLowerCase();
+  var repFilter = (filters.salesRep || '').toLowerCase();
+  var dateFrom  = filters.dateFrom ? new Date(filters.dateFrom) : null;
+  var dateTo    = filters.dateTo   ? new Date(filters.dateTo)   : null;
+  if (dateTo) dateTo.setHours(23, 59, 59, 999);
+
+  var leads = [], totalVal = 0;
+  for (var i = 1; i < raw.length; i++) {
+    if (!raw[i][0]) continue;
+    var r = raw[i];
+    if (statusFlt && String(r[10]).toLowerCase() !== statusFlt) continue;
+    if (repFilter && String(r[9]).toLowerCase().indexOf(repFilter) === -1) continue;
+    if (dateFrom || dateTo) {
+      var d = new Date(r[1]);
+      if (!isNaN(d)) {
+        if (dateFrom && d < dateFrom) continue;
+        if (dateTo   && d > dateTo)   continue;
+      }
+    }
+    leads.push(r);
+    totalVal += parseFloat(r[8]) || 0;
+  }
+  leads.reverse();
+
+  if (!leads.length) return { success: false, error: 'No leads for the selected filters' };
+
+  var periodLabel = filters.dateFrom ? (filters.dateFrom + ' to ' + (filters.dateTo || 'now')) : 'All';
+  var html = pdfHeader('Leads Report', periodLabel) +
+    '<div class="meta"><strong>Filter:</strong> Status: ' + (filters.status || 'All') +
+    (repFilter ? ' | Rep: ' + filters.salesRep : '') +
+    (filters.dateFrom ? ' | Period: ' + periodLabel : '') +
+    ' | Total: ' + leads.length + ' records' +
+    ' | Total Value: RM ' + formatNumber(totalVal) + '</div>' +
+    '<table><thead><tr>' +
+      '<th>ID</th><th>Date</th><th>Client</th><th>Source</th>' +
+      '<th>Assigned To</th><th>Budget (RM)</th><th>Status</th>' +
+    '</tr></thead><tbody>';
+
+  leads.forEach(function(r) {
+    html += '<tr>' +
+      '<td style="font-family:monospace;color:#1565c0;">' + r[0] + '</td>' +
+      '<td>' + Utilities.formatDate(new Date(r[1]), 'Asia/Kuala_Lumpur', 'dd-MM-yyyy') + '</td>' +
+      '<td><b>' + r[3] + '</b></td>' +
+      '<td>' + r[2] + '</td>' +
+      '<td>' + r[9] + '</td>' +
+      '<td class="amt">' + (r[8] ? 'RM ' + formatNumber(r[8]) : '-') + '</td>' +
+      '<td>' + statusBadgePDF(r[10]) + '</td>' +
+    '</tr>';
+  });
+
+  html += '<tr class="sum"><td colspan="5"><b>TOTAL</b></td>' +
+    '<td class="amt">RM ' + formatNumber(totalVal) + '</td><td></td></tr>';
+  html += '</tbody></table>' + pdfFooter(leads.length, 'lead');
+
+  var filename = 'Leads_Report_' + Utilities.formatDate(new Date(), 'UTC', 'yyyyMMdd_HHmmss') + '.pdf';
+  var file = savePDF(html, filename);
+  logActivity(user.email, 'EXPORT_LEADS_PDF', leads.length + ' records');
+  return { success: true, downloadUrl: file.getUrl(), filename: file.getName(), recordCount: leads.length };
+}
+
+// ─── BOOKINGS PDF ─────────────────────────────────────────────
+
+function buildBookingsReportPDF(bookings, month, year) {
+  var total = bookings.reduce(function(s, r) { return s + (parseFloat(r.totalValue) || 0); }, 0);
+  var html  = pdfHeader('Bookings Report', month + ' ' + year) +
+    '<div class="meta"><strong>Period:</strong> ' + month + ' ' + year +
+    ' | Total bookings: ' + bookings.length + ' | Total revenue: RM ' + formatNumber(total) + '</div>' +
+    '<table><thead><tr>' +
+      '<th>ID</th><th>Date</th><th>Client</th><th>Property</th>' +
+      '<th>Check-In</th><th>Nights</th><th>Revenue (RM)</th>' +
+      '<th>Sales Rep</th><th>Status</th>' +
+    '</tr></thead><tbody>';
+
+  bookings.forEach(function(r) {
+    html += '<tr>' +
+      '<td style="font-family:monospace;color:#1565c0;">' + r.id + '</td>' +
+      '<td>' + Utilities.formatDate(new Date(r.date), 'Asia/Kuala_Lumpur', 'dd-MM-yyyy') + '</td>' +
+      '<td><b>' + r.client + '</b></td>' +
+      '<td>' + r.property + '</td>' +
+      '<td>' + Utilities.formatDate(new Date(r.checkIn || r.date), 'Asia/Kuala_Lumpur', 'dd-MM-yyyy') + '</td>' +
+      '<td style="text-align:center;">' + (r.nights || '-') + '</td>' +
+      '<td class="amt">RM ' + formatNumber(r.totalValue) + '</td>' +
+      '<td>' + r.salesRep + '</td>' +
+      '<td>' + statusBadgePDF(r.status) + '</td>' +
+    '</tr>';
+  });
+
+  html += '<tr class="sum"><td colspan="6"><b>TOTAL REVENUE</b></td>' +
+    '<td class="amt">RM ' + formatNumber(total) + '</td><td colspan="2"></td></tr>';
+  html += '</tbody></table>' + pdfFooter(bookings.length, 'booking');
+  return html;
+}
+
+function generateBookingsPDF(filters, user) {
+  requireHROrAdmin(user);
+
+  var ss      = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet   = ss.getSheetByName(SHEETS.BOOKINGS);
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return { success: false, error: 'No booking records found' };
+
+  var raw       = sheet.getRange(1, 1, lastRow, 20).getValues();
+  var statusFlt = (filters.status   || '').toLowerCase();
+  var repFilter = (filters.salesRep || '').toLowerCase();
+  var dateFrom  = filters.dateFrom ? new Date(filters.dateFrom) : null;
+  var dateTo    = filters.dateTo   ? new Date(filters.dateTo)   : null;
+  if (dateTo) dateTo.setHours(23, 59, 59, 999);
+
+  var bookings = [], totalRev = 0;
+  for (var i = 1; i < raw.length; i++) {
+    if (!raw[i][0]) continue;
+    var r = raw[i];
+    if (statusFlt && String(r[16]).toLowerCase() !== statusFlt) continue;
+    if (repFilter && String(r[15]).toLowerCase().indexOf(repFilter) === -1) continue;
+    if (dateFrom || dateTo) {
+      var d = new Date(r[1]);
+      if (!isNaN(d)) {
+        if (dateFrom && d < dateFrom) continue;
+        if (dateTo   && d > dateTo)   continue;
+      }
+    }
+    bookings.push(r);
+    totalRev += parseFloat(r[12]) || 0;
+  }
+  bookings.reverse();
+
+  if (!bookings.length) return { success: false, error: 'No bookings for the selected filters' };
+
+  var periodLabel = filters.dateFrom ? (filters.dateFrom + ' to ' + (filters.dateTo || 'now')) : 'All';
+  var html = pdfHeader('Bookings Report', periodLabel) +
+    '<div class="meta"><strong>Filter:</strong> Status: ' + (filters.status || 'All') +
+    (repFilter ? ' | Rep: ' + filters.salesRep : '') +
+    (filters.dateFrom ? ' | Period: ' + periodLabel : '') +
+    ' | Total: ' + bookings.length + ' records' +
+    ' | Total Revenue: RM ' + formatNumber(totalRev) + '</div>' +
+    '<table><thead><tr>' +
+      '<th>ID</th><th>Date</th><th>Client</th><th>Property</th>' +
+      '<th>Check-In</th><th>Nights</th><th>Revenue (RM)</th>' +
+      '<th>Sales Rep</th><th>Status</th>' +
+    '</tr></thead><tbody>';
+
+  bookings.forEach(function(r) {
+    html += '<tr>' +
+      '<td style="font-family:monospace;color:#1565c0;">' + r[0] + '</td>' +
+      '<td>' + Utilities.formatDate(new Date(r[1]), 'Asia/Kuala_Lumpur', 'dd-MM-yyyy') + '</td>' +
+      '<td><b>' + r[2] + '</b></td>' +
+      '<td>' + r[5] + '</td>' +
+      '<td>' + (r[7] ? Utilities.formatDate(new Date(r[7]), 'Asia/Kuala_Lumpur', 'dd-MM-yyyy') : '-') + '</td>' +
+      '<td style="text-align:center;">' + (r[9] || '-') + '</td>' +
+      '<td class="amt">RM ' + formatNumber(r[12]) + '</td>' +
+      '<td>' + r[15] + '</td>' +
+      '<td>' + statusBadgePDF(r[16]) + '</td>' +
+    '</tr>';
+  });
+
+  html += '<tr class="sum"><td colspan="6"><b>TOTAL REVENUE</b></td>' +
+    '<td class="amt">RM ' + formatNumber(totalRev) + '</td><td colspan="2"></td></tr>';
+  html += '</tbody></table>' + pdfFooter(bookings.length, 'booking');
+
+  var filename = 'Bookings_Report_' + Utilities.formatDate(new Date(), 'UTC', 'yyyyMMdd_HHmmss') + '.pdf';
+  var file = savePDF(html, filename);
+  logActivity(user.email, 'EXPORT_BOOKINGS_PDF', bookings.length + ' records');
+  return { success: true, downloadUrl: file.getUrl(), filename: file.getName(), recordCount: bookings.length };
+}
+
+function getBookingsForPeriod(month, year, status) {
+  var ss      = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet   = ss.getSheetByName(SHEETS.BOOKINGS);
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return [];
+  var data      = sheet.getRange(1, 1, lastRow, 20).getValues();
+  var monthInt  = month ? parseInt(month) : 0;
+  var yearInt   = year  ? parseInt(year)  : 0;
+  var statusFlt = (status || '').toLowerCase();
+
   var bookings = [];
-  var monthInt = parseInt(month);
-  var yearInt = parseInt(year);
-  
   for (var i = 1; i < data.length; i++) {
     if (!data[i][0]) continue;
-    var d = new Date(data[i][1]);
-    if (d.getMonth() + 1 === monthInt && d.getFullYear() === yearInt) {
-      bookings.push({
-        id: data[i][0],
-        date: data[i][1],
-        client: data[i][2],
-        property: data[i][5],
-        totalValue: data[i][12],
-        salesRep: data[i][15],
-        status: data[i][16]
-      });
+    var r = data[i];
+    if (monthInt && yearInt) {
+      var d = new Date(r[1]);
+      if (d.getMonth() + 1 !== monthInt || d.getFullYear() !== yearInt) continue;
     }
+    if (statusFlt && String(r[16]).toLowerCase() !== statusFlt) continue;
+    bookings.push({
+      id: r[0], date: r[1], client: r[2], property: r[5],
+      checkIn: r[7], checkOut: r[8], nights: r[9],
+      totalValue: r[12], salesRep: r[15], status: r[16]
+    });
   }
+  bookings.reverse();
   return bookings;
 }
 
