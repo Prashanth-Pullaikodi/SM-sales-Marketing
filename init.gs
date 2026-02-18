@@ -12,7 +12,7 @@ function initSystem() {
   const ui = SpreadsheetApp.getUi ? SpreadsheetApp.getUi() : null;
 
   try {
-    Logger.log("=== SANDAL MIST SYSTEM INITIALIZATION ===");
+    Logger.log("=== SANDALMIST SM SALESBOARD INITIALIZATION ===");
 
     // Step 1: Create Drive Folder
     Logger.log("Step 1: Creating Drive folder...");
@@ -38,7 +38,7 @@ function initSystem() {
 
     if (ui) {
       ui.alert("✅ System Initialized!", 
-        "Sandal Mist SHRMS has been set up successfully.\n\n" +
+        "SandalMist SM SalesBoard has been set up successfully.\n\n" +
         "✓ All sheets created\n✓ Demo data loaded\n✓ Triggers configured\n" +
         "✓ Drive folder created\n\nDeploy the web app to share with your team.",
         ui.ButtonSet.OK);

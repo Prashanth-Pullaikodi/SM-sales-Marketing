@@ -1,12 +1,12 @@
 /**
  * ============================================================
- * SANDAL MIST Sales & HR Management System
+ * SandalMist SM SalesBoard
  * Code.gs - Main Entry Point & Web App Handler
  * ============================================================
  */
 
 // ─── CONSTANTS ────────────────────────────────────────────────
-var APP_NAME    = "Sandal Mist SHRMS";
+var APP_NAME    = "SandalMist SM SalesBoard";
 var APP_VERSION = "1.0.0";
 var DRIVE_FOLDER_NAME = "SandalMist_System";
 var CACHE_EXPIRY = 300;
@@ -119,7 +119,7 @@ function getAccessDeniedPage(email) {
     'font-size:13px;display:inline-block;margin:10px 0;}</style></head>' +
     '<body><div class="card"><div style="font-size:48px;">🚫</div>' +
     '<h2>Access Denied</h2>' +
-    '<p>Your Google account is not registered in the Sandal Mist system.</p>' +
+    '<p>Your Google account is not registered in the SandalMist system.</p>' +
     '<div class="em">' + email + '</div>' +
     '<p>Please contact your system administrator to request access.</p>' +
     '</div></body></html>';

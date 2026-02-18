@@ -5,9 +5,9 @@
  */
 
 const EMAIL_LOGO = "https://sandalmistresort.com/wp-content/uploads/2024/09/logo-white.png";
-const COMPANY_NAME = "Sandal Mist";
+const COMPANY_NAME = "SandalMist";
 const COMPANY_TAGLINE = "Hospitality Sales Excellence";
-const COMPANY_FOOTER = "Sandal Mist Sales & HR Management System | Confidential";
+const COMPANY_FOOTER = "SandalMist Sales & Marketing Management System | Confidential";
 
 // ─── EMAIL HEADER/FOOTER TEMPLATES ───────────────────────────
 
@@ -75,10 +75,10 @@ function getEmailHeader(title, subtitle) {
 <body>
 <div class="wrapper">
   <div class="header">
-    <img src="${EMAIL_LOGO}" alt="Sandal Mist Logo">
+    <img src="${EMAIL_LOGO}" alt="SandalMist Logo">
     <h1>${COMPANY_NAME}</h1>
     <p>${COMPANY_TAGLINE}</p>
-    <span class="badge">SHRMS Notification</span>
+    <span class="badge">SM SalesBoard Notification</span>
   </div>
   <div class="body">
     <div class="title-bar">
@@ -419,7 +419,7 @@ function generateDSRPdf(id, data, user) {
     '</head>' +
     '<body>' +
       '<div class="header">' +
-        '<h1>Sandal Mist</h1>' +
+        '<h1>SandalMist</h1>' +
         '<p>' + COMPANY_TAGLINE + '</p>' +
         '<p style="margin-top:10px;"><strong>DAILY SALES REPORT</strong></p>' +
         '<p class="report-id">' + id + '</p>' +
