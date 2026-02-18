@@ -1,0 +1,215 @@
+<script>
+/**
+ * ============================================================
+ * TableEnhancer - Universal Table Filtering & Sorting
+ * Include this in JS.html using <?!= include('TableEnhancer'); ?>
+ * ============================================================
+ */
+
+// ─── UNIVERSAL TABLE ENHANCEMENT ──────────────────────────────
+
+var TableEnhancer = {
+  data: {},
+  sortState: {},
+  
+  init: function(tableId, dataArray, renderFn) {
+    this.data[tableId] = dataArray;
+    this.sortState[tableId] = { column: null, direction: 'asc' };
+    if (renderFn) renderFn(dataArray);
+  },
+  
+  filter: function(tableId, filters, renderFn) {
+    var data = this.data[tableId] || [];
+    var filtered = data.filter(function(item) {
+      // Text search
+      if (filters.search) {
+        var searchLower = filters.search.toLowerCase();
+        var found = false;
+        for (var key in item) {
+          if (String(item[key]).toLowerCase().indexOf(searchLower) !== -1) {
+            found = true;
+            break;
+          }
+        }
+        if (!found) return false;
+      }
+      
+      // Date range
+      if (filters.dateFrom && item.date) {
+        if (new Date(item.date) < new Date(filters.dateFrom)) return false;
+      }
+      if (filters.dateTo && item.date) {
+        if (new Date(item.date) > new Date(filters.dateTo)) return false;
+      }
+      
+      // Dropdown filters
+      if (filters.status && item.status !== filters.status) return false;
+      if (filters.location && item.location !== filters.location) return false;
+      if (filters.salesRep && item.salesRep !== filters.salesRep) return false;
+      
+      return true;
+    });
+    
+    if (renderFn) renderFn(filtered);
+    return filtered;
+  },
+  
+  sort: function(tableId, columnKey, renderFn) {
+    var data = this.data[tableId] || [];
+    var state = this.sortState[tableId];
+    
+    if (state.column === columnKey) {
+      state.direction = state.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+      state.column = columnKey;
+      state.direction = 'asc';
+    }
+    
+    data.sort(function(a, b) {
+      var aVal = a[columnKey];
+      var bVal = b[columnKey];
+      
+      // Handle dates
+      if (columnKey === 'date' || columnKey.indexOf('Date') !== -1) {
+        aVal = new Date(aVal).getTime() || 0;
+        bVal = new Date(bVal).getTime() || 0;
+      }
+      
+      // Handle numbers
+      if (typeof aVal === 'number') {
+        return state.direction === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      
+      // Handle strings
+      aVal = String(aVal || '').toLowerCase();
+      bVal = String(bVal || '').toLowerCase();
+      
+      if (state.direction === 'asc') {
+        return aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+      } else {
+        return aVal < bVal ? 1 : aVal > bVal ? -1 : 0;
+      }
+    });
+    
+    if (renderFn) renderFn(data);
+  },
+  
+  getUniqueValues: function(tableId, columnKey) {
+    var data = this.data[tableId] || [];
+    var values = {};
+    data.forEach(function(item) {
+      if (item[columnKey]) values[item[columnKey]] = true;
+    });
+    return Object.keys(values).sort();
+  }
+};
+
+// ─── FILTER BAR BUILDER ───────────────────────────────────────
+
+function buildFilterBar(config) {
+  var html = '<div class="filters-bar" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">';
+  
+  // Search box
+  if (config.search) {
+    html += '<input type="text" class="filter-select" id="' + config.id + '_search" ' +
+            'placeholder="🔍 Search..." style="width:220px;" ' +
+            'onkeyup="' + config.onFilter + '()">';
+  }
+  
+  // Date range
+  if (config.dateRange) {
+    html += '<input type="date" class="filter-select" id="' + config.id + '_dateFrom" ' +
+            'onchange="' + config.onFilter + '()" style="width:150px;">' +
+            '<span style="color:var(--text-muted);font-size:12px;">to</span>' +
+            '<input type="date" class="filter-select" id="' + config.id + '_dateTo" ' +
+            'onchange="' + config.onFilter + '()" style="width:150px;">';
+  }
+  
+  // Dropdown filters
+  if (config.dropdowns) {
+    config.dropdowns.forEach(function(dd) {
+      html += '<select class="filter-select" id="' + config.id + '_' + dd.id + '" ' +
+              'onchange="' + config.onFilter + '()">' +
+              '<option value="">All ' + dd.label + '</option>';
+      if (dd.options) {
+        dd.options.forEach(function(opt) {
+          html += '<option>' + opt + '</option>';
+        });
+      }
+      html += '</select>';
+    });
+  }
+  
+  // Clear button
+  html += '<button class="btn btn-ghost btn-sm" onclick="' + config.onClear + '()">✖ Clear</button>';
+  
+  // Export button
+  if (config.exportBtn) {
+    html += '<button class="btn btn-outline btn-sm" onclick="' + config.onExport + '()">📥 Export CSV</button>';
+  }
+  
+  html += '</div>';
+  return html;
+}
+
+// ─── SORTABLE TABLE BUILDER ───────────────────────────────────
+
+function buildSortableTable(config) {
+  var html = '<div class="table-container"><table class="data-table" id="' + config.tableId + '">';
+  
+  // Headers
+  html += '<thead><tr>';
+  config.columns.forEach(function(col, idx) {
+    if (col.sortable !== false) {
+      html += '<th onclick="' + config.onSort + '(\'' + col.key + '\')" style="cursor:pointer;">' +
+              col.label + ' <span style="opacity:0.5;">⇅</span></th>';
+    } else {
+      html += '<th>' + col.label + '</th>';
+    }
+  });
+  html += '</tr></thead><tbody id="' + config.tableId + '_body"></tbody></table></div>';
+  
+  return html;
+}
+
+// ─── EXPORT TO CSV ────────────────────────────────────────────
+
+function exportTableToCSV(tableId, filename) {
+  var data = TableEnhancer.data[tableId] || [];
+  if (data.length === 0) {
+    showToast('No data to export', 'warning');
+    return;
+  }
+  
+  // Get headers
+  var headers = Object.keys(data[0]);
+  var csv = headers.join(',') + '\n';
+  
+  // Add rows
+  data.forEach(function(row) {
+    var values = headers.map(function(h) {
+      var val = row[h] || '';
+      // Escape commas and quotes
+      if (String(val).indexOf(',') !== -1 || String(val).indexOf('"') !== -1) {
+        val = '"' + String(val).replace(/"/g, '""') + '"';
+      }
+      return val;
+    });
+    csv += values.join(',') + '\n';
+  });
+  
+  // Download
+  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  var link = document.createElement('a');
+  var url = URL.createObjectURL(blob);
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename || 'export.csv');
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  
+  showToast('✅ CSV exported!', 'success');
+}
+</script>
+

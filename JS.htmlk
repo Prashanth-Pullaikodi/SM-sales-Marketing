@@ -1,0 +1,1425 @@
+<script>
+/* ============================================================
+   SANDAL MIST SHRMS - Frontend JavaScript (Fixed)
+   ============================================================ */
+// ─── BOOT ─────────────────────────────────────────────────────
+// Run as soon as DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+  bootApp();
+});
+
+function bootApp() {
+  // Populate UI with user info passed from server
+  setUserUI();
+  // Apply saved theme
+  applyTheme(localStorage.getItem('smTheme') || 'light');
+  // Show dashboard (first page)
+  showPage('dashboard');
+  // Load pending counts in background
+  setTimeout(loadPendingCounts, 1500);
+  // Close dropdown on outside click
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('#userMenuTrigger') && !e.target.closest('#userDropdown')) {
+      closeUserMenu();
+    }
+  });
+}
+
+// ─── USER UI SETUP ────────────────────────────────────────────
+
+function setUserUI() {
+  var u = CURRENT_USER;
+  if (!u || !u.name) return;
+
+  var initial = (u.name || '?').charAt(0).toUpperCase();
+  var roleClass = 'role-' + (u.role || 'sales').toLowerCase();
+
+  setEl('userAvatar',   initial);
+  setEl('ddAvatar',     initial);
+  setEl('navUserName',  u.name);
+  setEl('ddName',       u.name);
+  setEl('ddEmail',      u.email);
+  setEl('sidebarUser',  u.name);
+
+  var roleEl = document.getElementById('navUserRole');
+  if (roleEl) { roleEl.textContent = u.role; roleEl.className = 'user-role ' + roleClass; }
+
+  var ddRoleEl = document.getElementById('ddRole');
+  if (ddRoleEl) { ddRoleEl.textContent = u.role; ddRoleEl.className = 'dropdown-role ' + roleClass; }
+
+  // Show admin-only nav items
+  if (u.role === 'Admin') {
+    showEl('ddAdminLink');
+    showEl('adminNavItem');
+    showEl('mgmtLabel');
+  }
+  // Show management section for HR too
+  if (u.role === 'HR') {
+    showEl('mgmtLabel');
+  }
+}
+
+// ─── SERVER API ───────────────────────────────────────────────
+// Single function for all server calls via google.script.run
+
+function api(action, data) {
+  return new Promise(function(resolve, reject) {
+    var payload = JSON.stringify(data || {});
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success === false) {
+          reject(new Error(result.error || 'Server error'));
+        } else {
+          resolve(result);
+        }
+      })
+      .withFailureHandler(function(err) {
+        reject(new Error(err.message || 'Connection error'));
+      })
+      .handleClientRequest(action, payload);
+  });
+}
+
+// ─── NAVIGATION ───────────────────────────────────────────────
+
+var _currentPage = null;
+
+function showPage(pageName) {
+  // Don't block reload of same page — remove the early return
+  _currentPage = pageName;
+
+  // Update nav active state
+  document.querySelectorAll('.nav-item').forEach(function(el) {
+    el.classList.toggle('active', el.getAttribute('data-page') === pageName);
+  });
+
+  // Hide all pages
+  document.querySelectorAll('.page').forEach(function(p) {
+    p.classList.remove('active');
+    p.style.display = 'none';
+  });
+
+  // Show target page
+  var target = document.getElementById('page-' + pageName);
+  if (!target) {
+    showToast('Page not found: ' + pageName, 'error');
+    return;
+  }
+  target.style.display = 'block';
+  target.classList.add('active');
+
+  // Render content
+  switch(pageName) {
+    case 'dashboard':  renderDashboard(target);   break;
+    case 'dsr':        renderDSRPage(target);      break;
+    case 'travel':     renderTravelPage(target);   break;
+    case 'leads':      renderLeadsPage(target);    break;
+    case 'bookings':   renderBookingsPage(target); break;
+    case 'reports':    renderReportsPage(target);  break;
+    case 'incentives': renderIncentivesPage(target);break;
+    case 'admin':      renderAdminPage(target);    break;
+    case 'profile':    renderProfilePage(target);  break;
+  }
+}
+
+function loadPendingCounts() {
+  if (!CURRENT_USER || CURRENT_USER.role === 'Sales') return;
+  api('getTravelList', {}).then(function(res) {
+    if (!res || !res.data) return;
+    var pending = res.data.filter(function(t) { return t.status === 'Pending'; }).length;
+    if (pending > 0) {
+      var badge = document.getElementById('travelCount');
+      if (badge) { badge.textContent = pending; badge.style.display = 'flex'; }
+      var notif = document.getElementById('notifBadge');
+      if (notif) { notif.textContent = pending; notif.style.display = 'flex'; }
+    }
+  }).catch(function() {});
+}
+
+// ─── THEME ────────────────────────────────────────────────────
+
+function toggleTheme() {
+  var current = document.documentElement.getAttribute('data-theme') || 'light';
+  var next = current === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+  localStorage.setItem('smTheme', next);
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  var btn = document.getElementById('themeToggle');
+  if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+}
+
+// ─── SIDEBAR ──────────────────────────────────────────────────
+
+function toggleSidebar() {
+  var sidebar = document.getElementById('sidebar');
+  var main = document.getElementById('mainContent');
+  if (!sidebar) return;
+  if (window.innerWidth <= 768) {
+    sidebar.classList.toggle('mobile-open');
+    // Mobile overlay
+    var overlay = document.getElementById('sideOverlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'sideOverlay';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:850;display:none;';
+      overlay.onclick = function() { sidebar.classList.remove('mobile-open'); overlay.style.display='none'; };
+      document.body.appendChild(overlay);
+    }
+    overlay.style.display = sidebar.classList.contains('mobile-open') ? 'block' : 'none';
+  } else {
+    sidebar.classList.toggle('collapsed');
+    if (main) main.classList.toggle('full-width');
+  }
+}
+
+// ─── USER MENU ────────────────────────────────────────────────
+
+function toggleUserMenu() {
+  document.getElementById('userDropdown').classList.toggle('open');
+}
+function closeUserMenu() {
+  var d = document.getElementById('userDropdown');
+  if (d) d.classList.remove('open');
+}
+
+// ─── TOAST ────────────────────────────────────────────────────
+
+function showToast(msg, type, duration) {
+  type = type || 'info';
+  duration = duration || 4000;
+  var icons = { success:'✅', error:'❌', warning:'⚠️', info:'ℹ️' };
+  var t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.innerHTML = '<span class="toast-icon">' + (icons[type]||'ℹ️') + '</span>' +
+    '<span class="toast-msg">' + msg + '</span>' +
+    '<button class="toast-close" onclick="this.parentElement.remove()">✕</button>';
+  var container = document.getElementById('toastContainer');
+  if (container) container.appendChild(t);
+  setTimeout(function() { if (t.parentElement) t.remove(); }, duration);
+}
+
+// ─── MODAL ────────────────────────────────────────────────────
+
+function openModal(title, bodyHtml, footerHtml) {
+  setEl('modalTitle', title);
+  setElHTML('modalBody', bodyHtml || '');
+  setElHTML('modalFooter', footerHtml || '');
+  addClass('modalOverlay', 'open');
+  addClass('mainModal', 'open');
+}
+
+function closeModal() {
+  removeClass('modalOverlay', 'open');
+  removeClass('mainModal', 'open');
+  setElHTML('modalBody', '');
+  setElHTML('modalFooter', '');
+}
+
+// ─── HELPERS ──────────────────────────────────────────────────
+
+function setEl(id, text) {
+  var el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+function setElHTML(id, html) {
+  var el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+}
+function showEl(id) {
+  var el = document.getElementById(id);
+  if (el) el.style.display = '';
+}
+function hideEl(id) {
+  var el = document.getElementById(id);
+  if (el) el.style.display = 'none';
+}
+function addClass(id, cls) {
+  var el = document.getElementById(id);
+  if (el) el.classList.add(cls);
+}
+function removeClass(id, cls) {
+  var el = document.getElementById(id);
+  if (el) el.classList.remove(cls);
+}
+function setButtonLoading(btn, loading) {
+  if (!btn) return;
+  if (loading) {
+    btn._origText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid #fff;' +
+      'border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px;"></span>Loading...';
+  } else {
+    btn.disabled = false;
+    btn.innerHTML = btn._origText || btn.innerHTML;
+  }
+}
+
+function formatRM(n) {
+  return 'RM ' + (Number(n) || 0).toLocaleString('en-MY', {minimumFractionDigits:0, maximumFractionDigits:0});
+}
+function formatDate(d) {
+  if (!d || d === '' || d === 'undefined') return '-';
+  var dt = new Date(d);
+  if (isNaN(dt)) return String(d);
+  return dt.toLocaleDateString('en-MY', {year:'numeric', month:'short', day:'numeric'});
+}
+function todayStr() {
+  return new Date().toISOString().split('T')[0];
+}
+
+function statusBadge(status) {
+  var s = String(status || '-');
+  var map = {
+    'Pending':       'badge-pending',
+    'Approved':      'badge-approved',
+    'Rejected':      'badge-rejected',
+    'Submitted':     'badge-submitted',
+    'Active':        'badge-approved',
+    'Inactive':      'badge-inactive',
+    'Confirmed':     'badge-approved',
+    'Won':           'badge-approved',
+    'Lost':          'badge-rejected',
+    'New':           'badge-new',
+    'Qualified':     'badge-qualified',
+    'Proposal Sent': 'badge-proposal',
+    'Completed':     'badge-approved',
+    'Paid':          'badge-approved',
+    'Pending Payment':'badge-pending',
+    'Not Eligible':  'badge-inactive',
+    'Deposit Paid':  'badge-submitted'
+  };
+  var cls = map[s] || 'badge-new';
+  return '<span class="badge ' + cls + '">' + s + '</span>';
+}
+
+function monthOptions(selectedMonth) {
+  var months = ['January','February','March','April','May','June',
+    'July','August','September','October','November','December'];
+  var cur = selectedMonth || (new Date().getMonth() + 1);
+  return months.map(function(m, i) {
+    return '<option value="' + (i+1) + '"' + (i+1 === cur ? ' selected' : '') + '>' + m + '</option>';
+  }).join('');
+}
+function yearOptions(selectedYear) {
+  var cur = selectedYear || new Date().getFullYear();
+  return [cur-1, cur, cur+1].map(function(y) {
+    return '<option' + (y === cur ? ' selected' : '') + '>' + y + '</option>';
+  }).join('');
+}
+
+function emptyState(icon, title, msg) {
+  return '<div class="empty-state">' +
+    '<div class="empty-icon">' + icon + '</div>' +
+    '<h3>' + title + '</h3>' +
+    '<p>' + msg + '</p></div>';
+}
+function errorState(module, msg) {
+  return '<div class="empty-state">' +
+    '<div class="empty-icon">⚠️</div>' +
+    '<h3>Could not load ' + module + '</h3>' +
+    '<p>' + msg + '</p>' +
+    '<p class="text-muted" style="font-size:11px;margin-top:6px;">Check Admin › System Logs for details.</p>' +
+    '</div>';
+}
+function spinnerHTML() {
+  return '<div class="empty-state"><div class="loader-ring"></div><p style="margin-top:12px;color:var(--text-muted);">Loading...</p></div>';
+}
+
+// ─── DASHBOARD ────────────────────────────────────────────────
+
+function renderDashboard(container) {
+  container.innerHTML = '<div style="padding:24px;">' + spinnerHTML() + '</div>';
+
+  api('getDashboardStats', {}).then(function(res) {
+    if (!res || !res.data) throw new Error('Empty response');
+    var d = res.data;
+
+    container.innerHTML =
+      '<div class="page-header">' +
+        '<div class="page-header-left">' +
+          '<h1>📊 Dashboard</h1>' +
+          '<p>Welcome back, ' + CURRENT_USER.name + ' &nbsp;·&nbsp; ' +
+            new Date().toLocaleDateString('en-MY',{weekday:'long',year:'numeric',month:'long',day:'numeric'}) + '</p>' +
+        '</div>' +
+        '<div class="page-header-right">' +
+          '<button class="btn btn-outline btn-sm" onclick="showPage(\'dashboard\')">🔄 Refresh</button>' +
+          (CURRENT_USER.role !== 'Sales' ? '<button class="btn btn-primary btn-sm" onclick="showPage(\'reports\')">📈 Reports</button>' : '') +
+        '</div>' +
+      '</div>' +
+
+      '<div class="stats-grid">' +
+        statCard('blue',   '💰', formatRM(d.monthlyRevenue || 0), 'Monthly Revenue', 'This month') +
+        statCard('green',  '📅', d.confirmedBookings || 0,        'Confirmed Bookings', 'Total active') +
+        statCard('orange', '🎯', d.totalLeads || 0,               'Total Leads', (d.wonLeads||0) + ' Won') +
+        statCard('purple', '📊', (d.conversionRate || 0) + '%',   'Conversion Rate', (d.wonLeads||0)+'/'+( d.totalLeads||0)+' leads') +
+        statCard('teal',   '📝', d.monthlyDSR || 0,               'DSR This Month', (d.totalDSR||0)+' total') +
+        statCard('red',    '💎', formatRM(d.totalIncentives || 0),'Incentives YTD', (d.thisYear||new Date().getFullYear())+'') +
+      '</div>' +
+
+      '<div class="grid-2 mb-24">' +
+        '<div class="card">' +
+          '<div class="card-header"><div class="card-title">⚡ Quick Actions</div></div>' +
+          '<div class="card-body">' +
+            '<div style="display:flex;flex-direction:column;gap:10px;">' +
+              '<button class="btn btn-primary btn-full" onclick="showPage(\'dsr\');openDSRForm()">📝 Submit Daily Report</button>' +
+              '<button class="btn btn-outline btn-full" onclick="showPage(\'travel\');openTravelForm()">✈️ Plan Business Travel</button>' +
+              '<button class="btn btn-ghost btn-full" onclick="showPage(\'leads\');openLeadForm()">🎯 Add New Lead</button>' +
+              (CURRENT_USER.role !== 'Sales' ? '<button class="btn btn-ghost btn-full" onclick="showPage(\'bookings\');openBookingForm()">📅 Create Booking</button>' : '') +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="card">' +
+          '<div class="card-header"><div class="card-title">🎯 Lead Pipeline</div></div>' +
+          '<div class="card-body">' +
+            pipelineBar('Total Leads',     d.totalLeads,    d.totalLeads||1,  '#2196f3', '') +
+            pipelineBar('Active/Qualified',d.pendingLeads,  d.totalLeads||1,  '#ff9800', '') +
+            pipelineBar('Won',             d.wonLeads,      d.totalLeads||1,  '#4caf50', '') +
+            pipelineBar('Conversion Rate', d.conversionRate,100,             '#9c27b0', '%') +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="card">' +
+        '<div class="card-header">' +
+          '<div class="card-title">✈️ Pending Travel Approvals</div>' +
+          (CURRENT_USER.role !== 'Sales' ? '<button class="btn btn-ghost btn-sm" onclick="showPage(\'travel\')">Manage →</button>' : '') +
+        '</div>' +
+        '<div class="card-body" style="text-align:center;padding:30px;">' +
+          '<div style="font-size:48px;font-weight:700;color:var(--warning);">' + (d.pendingTravel || 0) + '</div>' +
+          '<div style="font-size:13px;color:var(--text-muted);margin-top:6px;">Travel Plans Pending Approval</div>' +
+          ((d.pendingTravel > 0 && CURRENT_USER.role !== 'Sales') ?
+            '<button class="btn btn-warning btn-sm" style="margin-top:12px;" onclick="showPage(\'travel\')">⚠️ Review Now</button>' :
+            '<div style="font-size:12px;color:var(--success);margin-top:8px;">✅ All cleared</div>') +
+        '</div>' +
+      '</div>';
+
+  }).catch(function(err) {
+    container.innerHTML = '<div style="padding:24px;">' + errorState('Dashboard', err.message) + '</div>';
+  });
+}
+
+function statCard(color, icon, value, label, sub) {
+  return '<div class="stat-card ' + color + '">' +
+    '<div class="stat-icon">' + icon + '</div>' +
+    '<div class="stat-info">' +
+      '<div class="stat-value">' + value + '</div>' +
+      '<div class="stat-label">' + label + '</div>' +
+      '<div class="stat-change">' + sub + '</div>' +
+    '</div></div>';
+}
+
+function pipelineBar(label, value, max, color, suffix) {
+  var pct = max > 0 ? Math.min(100, Math.round(((value||0)/max)*100)) : 0;
+  return '<div style="margin-bottom:12px;">' +
+    '<div class="flex-between" style="margin-bottom:4px;">' +
+      '<span style="font-size:12px;color:var(--text-sub);">' + label + '</span>' +
+      '<span style="font-size:12px;font-weight:700;color:' + color + ';">' + (value||0) + (suffix||'') + '</span>' +
+    '</div>' +
+    '<div class="progress-bar"><div class="progress-fill" style="width:' + pct + '%;background:' + color + ';"></div></div>' +
+  '</div>';
+}
+
+// ─── DSR PAGE ─────────────────────────────────────────────────
+
+function renderDSRPage(container) {
+  container.innerHTML =
+    '<div class="page-header">' +
+      '<div class="page-header-left"><h1>📝 Daily Sales Reports</h1><p>Track daily client visits and outcomes</p></div>' +
+      '<div class="page-header-right"><button class="btn btn-primary" onclick="openDSRForm()">➕ New Report</button></div>' +
+    '</div>' +
+    '<div class="filters-bar">' +
+      '<select class="filter-select" id="dsrMonth">' + monthOptions() + '</select>' +
+      '<select class="filter-select" id="dsrYear">' + yearOptions() + '</select>' +
+      '<button class="btn btn-ghost btn-sm" onclick="loadDSRList()">🔍 Filter</button>' +
+    '</div>' +
+    '<div class="card">' +
+      '<div class="card-header"><div class="card-title">My Reports</div><span id="dsrCount" class="text-muted" style="font-size:12px;"></span></div>' +
+      '<div id="dsrTable" style="padding:0;">' + spinnerHTML() + '</div>' +
+    '</div>';
+  loadDSRList();
+}
+
+function loadDSRList() {
+  var month = (document.getElementById('dsrMonth') || {}).value || '';
+  var year  = (document.getElementById('dsrYear')  || {}).value || '';
+  var tbl = document.getElementById('dsrTable');
+  if (!tbl) return;
+  tbl.innerHTML = spinnerHTML();
+
+  api('getDSRList', { month: month, year: year }).then(function(res) {
+    setEl('dsrCount', (res.count || 0) + ' record(s)');
+    if (!res.data || res.data.length === 0) {
+      tbl.innerHTML = emptyState('📝', 'No Reports Found', 'Submit your first daily report to get started.');
+      return;
+    }
+    var isManager = CURRENT_USER.role !== 'Sales';
+    var rows = res.data.map(function(r) {
+      return '<tr>' +
+        '<td><span class="font-mono text-primary">' + r.id + '</span></td>' +
+        '<td>' + formatDate(r.date) + '</td>' +
+        (isManager ? '<td><strong>' + r.salesRep + '</strong></td>' : '') +
+        '<td>📍 ' + r.location + '</td>' +
+        '<td>' + r.clientName + '</td>' +
+        '<td style="max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + r.purpose + '</td>' +
+        '<td>' + statusBadge(r.status) + '</td>' +
+        '<td><div class="action-btns">' +
+          '<button class="btn btn-ghost btn-sm" onclick=\'viewDSRItem(' + JSON.stringify(r) + ')\'>👁 View</button>' +
+          (r.pdfLink ? '<a href="' + r.pdfLink + '" target="_blank" class="btn btn-outline btn-sm">📄 PDF</a>' : '') +
+        '</div></td>' +
+      '</tr>';
+    }).join('');
+    tbl.innerHTML = '<div class="table-container"><table class="data-table"><thead><tr>' +
+      '<th>ID</th><th>Date</th>' + (isManager ? '<th>Sales Rep</th>' : '') +
+      '<th>Location</th><th>Client</th><th>Purpose</th><th>Status</th><th>Actions</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }).catch(function(err) {
+    tbl.innerHTML = errorState('DSR List', err.message);
+  });
+}
+
+function openDSRForm() {
+  openModal('📝 Submit Daily Sales Report',
+    '<div class="form-row">' +
+      formGroup('Date *', 'date', 'dsr_date', todayStr(), 'date', true) +
+      formGroup('Location *', 'text', 'dsr_location', 'e.g. Kuala Lumpur', '', true) +
+    '</div>' +
+    '<div class="form-row">' +
+      formGroup('Client Name *', 'text', 'dsr_clientName', 'Hotel / Company name', '', true) +
+      formGroup('Contact Number', 'tel', 'dsr_contact', '+60-12-345-6789') +
+    '</div>' +
+    '<div class="form-group">' +
+      '<label class="form-label">Purpose of Visit *</label>' +
+      '<textarea class="form-control" id="dsr_purpose" rows="2" placeholder="Describe reason for visit..."></textarea>' +
+    '</div>' +
+    '<div class="form-group">' +
+      '<label class="form-label">Result / Outcome *</label>' +
+      '<textarea class="form-control" id="dsr_result" rows="2" placeholder="What was the result?"></textarea>' +
+    '</div>' +
+    formGroup('Next Action Required', 'text', 'dsr_nextAction', 'e.g. Follow up call next Tuesday'),
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>' +
+    '<button class="btn btn-primary" id="dsrSubmitBtn" onclick="submitDSR()">📤 Submit Report</button>'
+  );
+}
+
+function submitDSR() {
+  var btn = document.getElementById('dsrSubmitBtn');
+  var data = {
+    date:       getVal('dsr_date'),
+    location:   getVal('dsr_location'),
+    clientName: getVal('dsr_clientName'),
+    contact:    getVal('dsr_contact'),
+    purpose:    getVal('dsr_purpose'),
+    result:     getVal('dsr_result'),
+    nextAction: getVal('dsr_nextAction')
+  };
+  if (!data.date || !data.location || !data.clientName || !data.purpose || !data.result) {
+    showToast('Please fill in all required fields', 'error'); return;
+  }
+  setButtonLoading(btn, true);
+  api('submitDSR', data).then(function(res) {
+    closeModal();
+    showToast('✅ Report ' + res.id + ' submitted! HR notified by email.', 'success', 6000);
+    loadDSRList();
+  }).catch(function(err) {
+    showToast(err.message, 'error');
+    setButtonLoading(btn, false);
+  });
+}
+
+function viewDSRItem(r) {
+  openModal('📝 Report: ' + r.id,
+    detailGrid([
+      ['Report ID', '<span class="font-mono text-primary">' + r.id + '</span>'],
+      ['Date', formatDate(r.date)],
+      ['Sales Rep', r.salesRep],
+      ['Location', '📍 ' + r.location],
+      ['Client Name', r.clientName],
+      ['Contact', r.contact || '-'],
+      ['Purpose', r.purpose, true],
+      ['Result', r.result, true],
+      ['Next Action', r.nextAction || '-', true],
+      ['Status', statusBadge(r.status)],
+      ['Submitted', r.submittedAt]
+    ]) + (r.pdfLink ? '<div style="margin-top:14px;"><a href="' + r.pdfLink + '" target="_blank" class="btn btn-outline">📄 View PDF</a></div>' : ''),
+    '<button class="btn btn-ghost" onclick="closeModal()">Close</button>'
+  );
+}
+
+// ─── TRAVEL PAGE ──────────────────────────────────────────────
+
+function renderTravelPage(container) {
+  container.innerHTML =
+    '<div class="page-header">' +
+      '<div class="page-header-left"><h1>✈️ Travel Plans</h1><p>Manage business travel and approvals</p></div>' +
+      '<div class="page-header-right"><button class="btn btn-primary" onclick="openTravelForm()">➕ New Travel Plan</button></div>' +
+    '</div>' +
+    '<div class="filters-bar">' +
+      '<select class="filter-select" id="tvStatus">' +
+        '<option value="">All Status</option>' +
+        '<option>Pending</option><option>Approved</option><option>Rejected</option>' +
+      '</select>' +
+      '<button class="btn btn-ghost btn-sm" onclick="loadTravelList()">🔍 Filter</button>' +
+    '</div>' +
+    '<div class="card">' +
+      '<div class="card-header"><div class="card-title">Travel Plans</div><span id="tvCount" class="text-muted" style="font-size:12px;"></span></div>' +
+      '<div id="tvTable" style="padding:0;">' + spinnerHTML() + '</div>' +
+    '</div>';
+  loadTravelList();
+}
+
+function loadTravelList() {
+  var tbl = document.getElementById('tvTable');
+  if (!tbl) return;
+  tbl.innerHTML = spinnerHTML();
+  api('getTravelList', {}).then(function(res) {
+    setEl('tvCount', (res.count||0) + ' plan(s)');
+    if (!res.data || res.data.length === 0) {
+      tbl.innerHTML = emptyState('✈️','No Travel Plans','No travel plans found.');
+      return;
+    }
+    var canApprove = CURRENT_USER.role === 'Admin' || CURRENT_USER.role === 'HR';
+    var rows = res.data.map(function(r) {
+      return '<tr>' +
+        '<td><span class="font-mono text-primary">' + r.id + '</span></td>' +
+        (canApprove ? '<td><strong>' + r.salesRep + '</strong></td>' : '') +
+        '<td>' + formatDate(r.travelDate) + '</td>' +
+        '<td>✈️ ' + r.city + '</td>' +
+        '<td style="max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + r.purpose + '</td>' +
+        '<td><strong>' + formatRM(r.expectedRevenue) + '</strong></td>' +
+        '<td>' + (r.estimatedDays||1) + 'd</td>' +
+        '<td>' + statusBadge(r.status) + '</td>' +
+        '<td><div class="action-btns">' +
+          '<button class="btn btn-ghost btn-sm" onclick=\'viewTravelItem(' + JSON.stringify(r) + ')\'>👁</button>' +
+          (canApprove && r.status === 'Pending' ?
+            '<button class="btn btn-success btn-sm" onclick="doTravelAction(' + r.rowIndex + ',\'Approved\',\'' + r.id + '\')">✅</button>' +
+            '<button class="btn btn-danger btn-sm" onclick="doTravelAction(' + r.rowIndex + ',\'Rejected\',\'' + r.id + '\')">❌</button>'
+          : '') +
+        '</div></td>' +
+      '</tr>';
+    }).join('');
+    tbl.innerHTML = '<div class="table-container"><table class="data-table"><thead><tr>' +
+      '<th>ID</th>' + (canApprove ? '<th>Sales Rep</th>' : '') +
+      '<th>Travel Date</th><th>City</th><th>Purpose</th><th>Exp. Revenue</th><th>Days</th><th>Status</th><th>Actions</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }).catch(function(err) {
+    tbl.innerHTML = errorState('Travel Plans', err.message);
+  });
+}
+
+function openTravelForm() {
+  openModal('✈️ New Travel Plan',
+    '<div class="form-row">' +
+      formGroup('Travel Date *', 'date', 't_date', '') +
+      formGroup('Return Date', 'date', 't_rdate', '') +
+    '</div>' +
+    '<div class="form-row">' +
+      formGroup('Destination City *', 'text', 't_city', 'e.g. Penang') +
+      formGroup('Estimated Days *', 'number', 't_days', '1') +
+    '</div>' +
+    formGroup('Clients to Visit', 'text', 't_clients', 'Hotel A, Resort B') +
+    '<div class="form-group"><label class="form-label">Purpose *</label>' +
+      '<textarea class="form-control" id="t_purpose" rows="2" placeholder="Business purpose..."></textarea></div>' +
+    '<div class="form-row">' +
+      formGroup('Expected Revenue (RM) *', 'number', 't_revenue', '0') +
+      '<div class="form-group"><label class="form-label">Transport</label>' +
+        '<select class="form-control" id="t_transport">' +
+          '<option>Flight</option><option>Driving</option><option>Train</option><option>Bus</option>' +
+        '</select></div>' +
+    '</div>' +
+    formGroup('Accommodation', 'text', 't_hotel', 'Hotel name or Client-Hosted'),
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>' +
+    '<button class="btn btn-primary" id="tvSubmitBtn" onclick="submitTravel()">📤 Submit for Approval</button>'
+  );
+}
+
+function submitTravel() {
+  var btn = document.getElementById('tvSubmitBtn');
+  var data = {
+    travelDate:      getVal('t_date'),
+    returnDate:      getVal('t_rdate'),
+    city:            getVal('t_city'),
+    clients:         getVal('t_clients'),
+    purpose:         getVal('t_purpose'),
+    expectedRevenue: getVal('t_revenue'),
+    estimatedDays:   getVal('t_days'),
+    transport:       getVal('t_transport'),
+    accommodation:   getVal('t_hotel')
+  };
+  if (!data.travelDate || !data.city || !data.purpose || !data.expectedRevenue || !data.estimatedDays) {
+    showToast('Please fill required fields', 'error'); return;
+  }
+  setButtonLoading(btn, true);
+  api('submitTravel', data).then(function(res) {
+    closeModal();
+    showToast('✅ Travel plan ' + res.id + ' submitted! HR notified.', 'success');
+    loadTravelList();
+  }).catch(function(err) {
+    showToast(err.message, 'error');
+    setButtonLoading(btn, false);
+  });
+}
+
+function doTravelAction(rowIndex, status, id) {
+  var notes = status === 'Rejected' ? (prompt('Reason for rejection (optional):') || '') : '';
+  api('updateTravelStatus', { rowIndex: rowIndex, status: status, notes: notes }).then(function() {
+    showToast('Travel plan ' + id + ' marked as ' + status, status === 'Approved' ? 'success' : 'warning');
+    loadTravelList();
+    loadPendingCounts();
+  }).catch(function(err) { showToast(err.message, 'error'); });
+}
+
+function viewTravelItem(r) {
+  openModal('✈️ Travel Plan: ' + r.id,
+    detailGrid([
+      ['ID', '<span class="font-mono text-primary">' + r.id + '</span>'],
+      ['Sales Rep', r.salesRep],
+      ['Travel Date', formatDate(r.travelDate)],
+      ['Return Date', formatDate(r.returnDate) || '-'],
+      ['City', '✈️ ' + r.city],
+      ['Duration', (r.estimatedDays||1) + ' day(s)'],
+      ['Clients', r.clients || '-', true],
+      ['Purpose', r.purpose, true],
+      ['Expected Revenue', '<strong class="text-success">' + formatRM(r.expectedRevenue) + '</strong>'],
+      ['Status', statusBadge(r.status)],
+      ['Approved By', r.approvedBy || '-'],
+      ['Notes', r.notes || '-', true]
+    ]),
+    '<button class="btn btn-ghost" onclick="closeModal()">Close</button>'
+  );
+}
+
+// ─── LEADS PAGE ───────────────────────────────────────────────
+
+function renderLeadsPage(container) {
+  container.innerHTML =
+    '<div class="page-header">' +
+      '<div class="page-header-left"><h1>🎯 Lead Management</h1><p>Track client conversion pipeline</p></div>' +
+      '<div class="page-header-right"><button class="btn btn-primary" onclick="openLeadForm()">➕ Add Lead</button></div>' +
+    '</div>' +
+    '<div class="filters-bar">' +
+      '<select class="filter-select" id="ldStatus">' +
+        '<option value="">All Status</option>' +
+        '<option>New</option><option>Qualified</option><option>Proposal Sent</option>' +
+        '<option>Won</option><option>Lost</option>' +
+      '</select>' +
+      '<button class="btn btn-ghost btn-sm" onclick="loadLeadList()">🔍 Filter</button>' +
+    '</div>' +
+    '<div class="card">' +
+      '<div class="card-header"><div class="card-title">Leads</div><span id="ldCount" class="text-muted" style="font-size:12px;"></span></div>' +
+      '<div id="ldTable" style="padding:0;">' + spinnerHTML() + '</div>' +
+    '</div>';
+  loadLeadList();
+}
+
+function loadLeadList() {
+  var status = (document.getElementById('ldStatus')||{}).value || '';
+  var tbl = document.getElementById('ldTable');
+  if (!tbl) return;
+  tbl.innerHTML = spinnerHTML();
+  api('getLeads', { status: status }).then(function(res) {
+    setEl('ldCount', (res.count||0) + ' lead(s)');
+    if (!res.data || res.data.length === 0) {
+      tbl.innerHTML = emptyState('🎯','No Leads Found','Add your first lead to start tracking.');
+      return;
+    }
+    var rows = res.data.map(function(r) {
+      return '<tr>' +
+        '<td><span class="font-mono text-primary">' + r.id + '</span></td>' +
+        '<td>' + formatDate(r.date) + '</td>' +
+        '<td><strong>' + r.clientName + '</strong><div style="font-size:11px;color:var(--text-muted);">' + r.contactPerson + '</div></td>' +
+        '<td>' + r.leadSource + '</td>' +
+        '<td>' + (r.budget ? formatRM(r.budget) : '-') + '</td>' +
+        '<td>' + r.assignedTo + '</td>' +
+        '<td>' + statusBadge(r.status) + '</td>' +
+        '<td><div class="action-btns">' +
+          '<button class="btn btn-ghost btn-sm" onclick=\'viewLeadItem(' + JSON.stringify(r) + ')\'>👁</button>' +
+          '<button class="btn btn-outline btn-sm" onclick="editLeadStatusModal(' + r.rowIndex + ',\'' + r.id + '\',\'' + r.status + '\')">✏️</button>' +
+        '</div></td>' +
+      '</tr>';
+    }).join('');
+    tbl.innerHTML = '<div class="table-container"><table class="data-table"><thead><tr>' +
+      '<th>ID</th><th>Date</th><th>Client</th><th>Source</th><th>Budget</th>' +
+      '<th>Assigned</th><th>Status</th><th>Actions</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }).catch(function(err) { tbl.innerHTML = errorState('Leads', err.message); });
+}
+
+function openLeadForm() {
+  openModal('🎯 Add New Lead',
+    '<div class="form-row">' +
+      formGroup('Client Name *', 'text', 'l_client', 'Hotel / Company') +
+      formGroup('Contact Person', 'text', 'l_contact', 'Mr/Ms Name') +
+    '</div>' +
+    '<div class="form-row">' +
+      formGroup('Phone', 'tel', 'l_phone', '+60-12-xxx-xxxx') +
+      formGroup('Email', 'email', 'l_email', 'contact@company.com') +
+    '</div>' +
+    '<div class="form-row">' +
+      '<div class="form-group"><label class="form-label">Lead Source *</label>' +
+        '<select class="form-control" id="l_source">' +
+          '<option>Referral</option><option>Cold Call</option><option>Exhibition</option>' +
+          '<option>Walk-in</option><option>Social Media</option><option>Online</option><option>Other</option>' +
+        '</select></div>' +
+      '<div class="form-group"><label class="form-label">Property Type</label>' +
+        '<select class="form-control" id="l_type">' +
+          '<option>5-Star Hotel</option><option>4-Star Hotel</option><option>Resort</option>' +
+          '<option>Heritage Hotel</option><option>Boutique Hotel</option><option>Service Apartment</option><option>Other</option>' +
+        '</select></div>' +
+    '</div>' +
+    '<div class="form-row">' +
+      formGroup('Budget (RM)', 'number', 'l_budget', '0') +
+      '<div class="form-group"><label class="form-label">Status *</label>' +
+        '<select class="form-control" id="l_status">' +
+          '<option>New</option><option>Qualified</option><option>Proposal Sent</option><option>Won</option><option>Lost</option>' +
+        '</select></div>' +
+    '</div>' +
+    formGroup('Follow-up Date', 'date', 'l_followup', '') +
+    '<div class="form-group"><label class="form-label">Notes</label>' +
+      '<textarea class="form-control" id="l_notes" rows="2"></textarea></div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>' +
+    '<button class="btn btn-primary" id="ldSubmitBtn" onclick="submitLead()">➕ Add Lead</button>'
+  );
+}
+
+function submitLead() {
+  var btn = document.getElementById('ldSubmitBtn');
+  var data = {
+    clientName: getVal('l_client'), contactPerson: getVal('l_contact'),
+    phone: getVal('l_phone'), email: getVal('l_email'),
+    leadSource: getVal('l_source'), propertyType: getVal('l_type'),
+    budget: getVal('l_budget'), status: getVal('l_status'),
+    followUpDate: getVal('l_followup'), notes: getVal('l_notes'),
+    value: getVal('l_budget')
+  };
+  if (!data.clientName || !data.leadSource || !data.status) {
+    showToast('Fill required fields', 'error'); return;
+  }
+  setButtonLoading(btn, true);
+  api('submitLead', data).then(function(res) {
+    closeModal();
+    showToast('✅ Lead ' + res.id + ' added!', 'success');
+    loadLeadList();
+  }).catch(function(err) { showToast(err.message,'error'); setButtonLoading(btn,false); });
+}
+
+function editLeadStatusModal(rowIndex, id, current) {
+  openModal('✏️ Update Lead: ' + id,
+    '<div class="form-group"><label class="form-label">New Status</label>' +
+      '<select class="form-control" id="ldNewStatus">' +
+        ['New','Qualified','Proposal Sent','Won','Lost'].map(function(s) {
+          return '<option' + (s===current?' selected':'') + '>' + s + '</option>';
+        }).join('') +
+      '</select></div>' +
+    '<div class="form-group"><label class="form-label">Notes</label>' +
+      '<textarea class="form-control" id="ldUpdateNotes" rows="2"></textarea></div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>' +
+    '<button class="btn btn-primary" id="ldUpdBtn" onclick="updateLeadStatus(' + rowIndex + ',\'' + id + '\')">Update</button>'
+  );
+}
+
+function updateLeadStatus(rowIndex, id) {
+  var btn = document.getElementById('ldUpdBtn');
+  setButtonLoading(btn, true);
+  api('updateLeadStatus', { rowIndex: rowIndex, status: getVal('ldNewStatus'), notes: getVal('ldUpdateNotes'), leadId: id }).then(function() {
+    closeModal();
+    showToast('Lead updated', 'success');
+    loadLeadList();
+  }).catch(function(err) { showToast(err.message,'error'); setButtonLoading(btn,false); });
+}
+
+function viewLeadItem(r) {
+  openModal('🎯 Lead: ' + r.id,
+    detailGrid([
+      ['Client', '<strong>' + r.clientName + '</strong>'],
+      ['Contact', r.contactPerson || '-'],
+      ['Phone', r.phone || '-'],
+      ['Email', r.email || '-'],
+      ['Source', r.leadSource],
+      ['Property Type', r.propertyType || '-'],
+      ['Budget', r.budget ? formatRM(r.budget) : '-'],
+      ['Assigned To', r.assignedTo],
+      ['Status', statusBadge(r.status)],
+      ['Follow-up', formatDate(r.followUpDate) || '-'],
+      ['Notes', r.notes || '-', true]
+    ]),
+    '<button class="btn btn-ghost" onclick="closeModal()">Close</button>'
+  );
+}
+
+// ─── BOOKINGS PAGE ────────────────────────────────────────────
+
+function renderBookingsPage(container) {
+  container.innerHTML =
+    '<div class="page-header">' +
+      '<div class="page-header-left"><h1>📅 Bookings</h1><p>Property bookings and revenue tracking</p></div>' +
+      '<div class="page-header-right">' +
+        (CURRENT_USER.role !== 'Sales' ? '<button class="btn btn-primary" onclick="openBookingForm()">➕ New Booking</button>' : '') +
+      '</div>' +
+    '</div>' +
+    '<div class="card">' +
+      '<div class="card-header"><div class="card-title">All Bookings</div><span id="bkCount" class="text-muted" style="font-size:12px;"></span></div>' +
+      '<div id="bkTable" style="padding:0;">' + spinnerHTML() + '</div>' +
+    '</div>';
+  loadBookingsList();
+}
+
+function loadBookingsList() {
+  var tbl = document.getElementById('bkTable');
+  if (!tbl) return;
+  tbl.innerHTML = spinnerHTML();
+  api('getBookings', {}).then(function(res) {
+    setEl('bkCount', (res.count||0) + ' booking(s)');
+    if (!res.data || res.data.length === 0) {
+      tbl.innerHTML = emptyState('📅','No Bookings','No bookings found.');
+      return;
+    }
+    var total = res.data.reduce(function(s,r){ return s + (parseFloat(r.totalValue)||0); }, 0);
+    var rows = res.data.map(function(r) {
+      return '<tr>' +
+        '<td><span class="font-mono text-primary">' + r.id + '</span></td>' +
+        '<td>' + formatDate(r.bookingDate) + '</td>' +
+        '<td><strong>' + r.clientName + '</strong></td>' +
+        '<td>' + r.propertyName + '</td>' +
+        '<td>' + formatDate(r.checkIn) + '</td>' +
+        '<td>' + formatDate(r.checkOut) + '</td>' +
+        '<td>' + (r.nights||0) + '</td>' +
+        '<td><strong class="text-success">' + formatRM(r.totalValue) + '</strong></td>' +
+        '<td>' + r.salesRep + '</td>' +
+        '<td>' + statusBadge(r.status) + '</td>' +
+      '</tr>';
+    }).join('');
+    rows += '<tr class="summary-row"><td colspan="7"><strong>TOTAL</strong></td>' +
+      '<td colspan="3"><strong>' + formatRM(total) + '</strong></td></tr>';
+    tbl.innerHTML = '<div class="table-container"><table class="data-table"><thead><tr>' +
+      '<th>ID</th><th>Date</th><th>Client</th><th>Property</th>' +
+      '<th>Check-In</th><th>Check-Out</th><th>Nights</th><th>Total Value</th>' +
+      '<th>Sales Rep</th><th>Status</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }).catch(function(err) { tbl.innerHTML = errorState('Bookings', err.message); });
+}
+
+function openBookingForm() {
+  openModal('📅 Create Booking',
+    '<div class="form-row">' +
+      formGroup('Client Name *', 'text', 'b_client', 'Company / Client') +
+      formGroup('Phone', 'tel', 'b_phone', '+60-x-xxxx-xxxx') +
+    '</div>' +
+    '<div class="form-row">' +
+      formGroup('Property Name *', 'text', 'b_property', 'Hotel name') +
+      formGroup('Room Type', 'text', 'b_room', 'e.g. Deluxe Room') +
+    '</div>' +
+    '<div class="form-row">' +
+      formGroup('Check-In *', 'date', 'b_in', '', '', false, 'onchange="bkCalc()"') +
+      formGroup('Check-Out *', 'date', 'b_out', '', '', false, 'onchange="bkCalc()"') +
+    '</div>' +
+    '<div class="form-row">' +
+      formGroup('Rate/Night (RM)', 'number', 'b_rate', '0', '', false, 'onchange="bkCalc()"') +
+      formGroup('Nights', 'number', 'b_nights', '0', '', false, 'readonly') +
+    '</div>' +
+    formGroup('Total Value (RM) *', 'number', 'b_total', '0') +
+    '<div class="form-row">' +
+      '<div class="form-group"><label class="form-label">Status</label>' +
+        '<select class="form-control" id="b_status">' +
+          '<option>Confirmed</option><option>Tentative</option><option>Completed</option>' +
+        '</select></div>' +
+      formGroup('Sales Rep', 'text', 'b_rep', CURRENT_USER.name) +
+    '</div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>' +
+    '<button class="btn btn-primary" id="bkSubmitBtn" onclick="submitBooking()">📅 Create Booking</button>'
+  );
+}
+
+function bkCalc() {
+  var ci = getVal('b_in'), co = getVal('b_out'), rate = parseFloat(getVal('b_rate'))||0;
+  if (ci && co) {
+    var nights = Math.max(0, Math.ceil((new Date(co)-new Date(ci))/86400000));
+    var el = document.getElementById('b_nights');
+    if (el) el.value = nights;
+    var tl = document.getElementById('b_total');
+    if (tl) tl.value = nights * rate;
+  }
+}
+
+function submitBooking() {
+  var btn = document.getElementById('bkSubmitBtn');
+  var data = {
+    clientName: getVal('b_client'), phone: getVal('b_phone'),
+    propertyName: getVal('b_property'), roomType: getVal('b_room'),
+    checkIn: getVal('b_in'), checkOut: getVal('b_out'),
+    ratePerNight: getVal('b_rate'), totalValue: getVal('b_total'),
+    status: getVal('b_status'), salesRep: getVal('b_rep')
+  };
+  if (!data.clientName || !data.propertyName || !data.checkIn || !data.checkOut || !data.totalValue) {
+    showToast('Fill required fields', 'error'); return;
+  }
+  setButtonLoading(btn, true);
+  api('submitBooking', data).then(function(res) {
+    closeModal();
+    showToast('✅ Booking ' + res.id + ' created!', 'success');
+    loadBookingsList();
+  }).catch(function(err) { showToast(err.message,'error'); setButtonLoading(btn,false); });
+}
+
+// ─── REPORTS PAGE ─────────────────────────────────────────────
+
+function renderReportsPage(container) {
+  if (CURRENT_USER.role === 'Sales') {
+    container.innerHTML = emptyState('🔒','Access Restricted','Reports are available to HR and Admin only.');
+    return;
+  }
+  container.innerHTML =
+    '<div class="page-header">' +
+      '<div class="page-header-left"><h1>📈 Management Reports</h1><p>Team performance analytics</p></div>' +
+    '</div>' +
+    '<div class="filters-bar">' +
+      '<select class="filter-select" id="rMonth">' + monthOptions() + '</select>' +
+      '<select class="filter-select" id="rYear">' + yearOptions() + '</select>' +
+      '<button class="btn btn-primary btn-sm" onclick="loadMonthlyReport()">📊 Generate</button>' +
+      '<button class="btn btn-outline btn-sm" onclick="doExport(\'monthly\')">📥 Export CSV</button>' +
+      '<button class="btn btn-ghost btn-sm" onclick="doExport(\'bookings\')">📥 Bookings</button>' +
+      '<button class="btn btn-ghost btn-sm" onclick="doExport(\'leads\')">📥 Leads</button>' +
+    '</div>' +
+    '<div id="reportContent">' +
+      '<div class="card"><div class="card-body">' + emptyState('📊','Select Period','Choose month and year then click Generate') + '</div></div>' +
+    '</div>';
+}
+
+function loadMonthlyReport() {
+  var month = getVal('rMonth'), year = getVal('rYear');
+  var c = document.getElementById('reportContent');
+  if (!c) return;
+  c.innerHTML = '<div class="card"><div class="card-body">' + spinnerHTML() + '</div></div>';
+  api('getMonthlyReport', { month: month, year: year }).then(function(res) {
+    if (!res.data || res.data.length === 0) {
+      c.innerHTML = '<div class="card"><div class="card-body">' + emptyState('📊','No Data','No data for this period.') + '</div></div>';
+      return;
+    }
+    var totals = res.data.reduce(function(t,r) {
+      t.rev += r.revenue||0; t.bk += r.bookings||0;
+      t.nl += r.newLeads||0; t.wl += r.wonLeads||0; t.d += r.dsrCount||0;
+      return t;
+    }, {rev:0,bk:0,nl:0,wl:0,d:0});
+    var medals = ['🥇','🥈','🥉'];
+    var rows = res.data.map(function(r,i) {
+      var inc = Math.max(0, r.revenue - 500000) * 0.01;
+      return '<tr>' +
+        '<td>' + (medals[i]||'#'+(i+1)) + '</td>' +
+        '<td><strong>' + r.rep + '</strong></td>' +
+        '<td class="text-success font-bold">' + formatRM(r.revenue) + '</td>' +
+        '<td>' + r.bookings + '</td>' +
+        '<td>' + r.newLeads + '</td>' +
+        '<td>' + r.wonLeads + '</td>' +
+        '<td>' + r.conversionRate + '%</td>' +
+        '<td>' + r.dsrCount + '</td>' +
+        '<td>' + (inc > 0 ? '<span class="text-success">' + formatRM(inc) + '</span>' : '<span class="text-muted">-</span>') + '</td>' +
+      '</tr>';
+    }).join('');
+    c.innerHTML =
+      '<div class="stats-grid mb-24">' +
+        statCard('blue','💰',formatRM(totals.rev),'Total Revenue','All bookings') +
+        statCard('green','📅',totals.bk,'Total Bookings','This period') +
+        statCard('orange','🎯',totals.wl+'/'+totals.nl,'Won/New Leads','This period') +
+      '</div>' +
+      '<div class="card"><div class="card-header"><div class="card-title">📊 Team Performance</div></div>' +
+      '<div style="padding:0;"><div class="table-container"><table class="data-table"><thead><tr>' +
+        '<th>Rank</th><th>Sales Rep</th><th>Revenue</th><th>Bookings</th>' +
+        '<th>New Leads</th><th>Won</th><th>Conversion</th><th>DSR</th><th>Incentive</th>' +
+      '</tr></thead><tbody>' + rows +
+      '<tr class="summary-row">' +
+        '<td colspan="2"><strong>TOTAL</strong></td>' +
+        '<td><strong>' + formatRM(totals.rev) + '</strong></td>' +
+        '<td><strong>' + totals.bk + '</strong></td>' +
+        '<td><strong>' + totals.nl + '</strong></td>' +
+        '<td><strong>' + totals.wl + '</strong></td>' +
+        '<td></td><td><strong>' + totals.d + '</strong></td>' +
+        '<td><strong>' + formatRM(res.data.reduce(function(s,r){return s+Math.max(0,r.revenue-500000)*0.01;},0)) + '</strong></td>' +
+      '</tr>' +
+      '</tbody></table></div></div></div>';
+  }).catch(function(err) {
+    c.innerHTML = '<div class="card"><div class="card-body">' + errorState('Reports', err.message) + '</div></div>';
+  });
+}
+
+function doExport(type) {
+  var month = (document.getElementById('rMonth')||{}).value || (new Date().getMonth()+1);
+  var year  = (document.getElementById('rYear') ||{}).value || new Date().getFullYear();
+  api('exportReport', { reportType: type, format: 'csv', month: month, year: year }).then(function(res) {
+    if (res.downloadUrl) {
+      window.open(res.downloadUrl, '_blank');
+      showToast('📥 ' + res.filename + ' ready!', 'success');
+    }
+  }).catch(function(err) { showToast(err.message, 'error'); });
+}
+
+// ─── INCENTIVES PAGE ──────────────────────────────────────────
+
+function renderIncentivesPage(container) {
+  container.innerHTML =
+    '<div class="page-header">' +
+      '<div class="page-header-left"><h1>💰 Incentive Calculator</h1>' +
+        '<p>Formula: (Total Sales − RM500,000) × 1%</p></div>' +
+      '<div class="page-header-right">' +
+        (CURRENT_USER.role !== 'Sales' ? '<button class="btn btn-primary" onclick="openCalcModal()">🧮 Calculate</button>' : '') +
+      '</div>' +
+    '</div>' +
+    '<div class="card mb-24"><div class="card-body">' +
+      '<div style="display:flex;flex-wrap:wrap;gap:24px;align-items:center;">' +
+        '<div><div style="font-size:11px;color:var(--text-muted);">BASE THRESHOLD</div>' +
+          '<div style="font-size:22px;font-weight:700;">RM 500,000</div></div>' +
+        '<div><div style="font-size:11px;color:var(--text-muted);">RATE</div>' +
+          '<div style="font-size:22px;font-weight:700;color:var(--success);">1%</div></div>' +
+        '<div><div style="font-size:11px;color:var(--text-muted);">EXAMPLE</div>' +
+          '<div style="font-size:13px;color:var(--text-sub);">RM 700k sales → (700k−500k) × 1% = ' +
+            '<strong style="color:var(--success);">RM 2,000</strong></div></div>' +
+      '</div></div></div>' +
+    '<div class="filters-bar">' +
+      '<select class="filter-select" id="incYear" onchange="loadIncentives()">' + yearOptions() + '</select>' +
+    '</div>' +
+    '<div class="card"><div class="card-header"><div class="card-title">Incentive Records</div>' +
+      '<span id="incCount" class="text-muted" style="font-size:12px;"></span></div>' +
+      '<div id="incTable" style="padding:0;">' + spinnerHTML() + '</div>' +
+    '</div>';
+  loadIncentives();
+}
+
+function loadIncentives() {
+  var year = (document.getElementById('incYear')||{}).value;
+  var tbl = document.getElementById('incTable');
+  if (!tbl) return;
+  tbl.innerHTML = spinnerHTML();
+  api('getIncentives', { year: year }).then(function(res) {
+    setEl('incCount', (res.count||0) + ' record(s)');
+    if (!res.data || res.data.length === 0) {
+      tbl.innerHTML = emptyState('💰','No Records','Run the calculator to generate incentive records.');
+      return;
+    }
+    var total = res.data.reduce(function(s,r){ return s+(parseFloat(r.incentiveAmount)||0); },0);
+    var rows = res.data.map(function(r) {
+      return '<tr>' +
+        '<td class="font-mono text-primary">' + r.id + '</td>' +
+        '<td><strong>' + r.salesRep + '</strong></td>' +
+        '<td>' + r.month + ' ' + r.year + '</td>' +
+        '<td>' + formatRM(r.totalSales) + '</td>' +
+        '<td>' + (r.eligibleAmount > 0 ? formatRM(r.eligibleAmount) : '<span class="text-muted">—</span>') + '</td>' +
+        '<td>' + ((r.incentiveRate||0.01)*100).toFixed(0) + '%</td>' +
+        '<td class="' + (r.incentiveAmount > 0 ? 'text-success font-bold' : 'text-muted') + '">' +
+          (r.incentiveAmount > 0 ? formatRM(r.incentiveAmount) : '—') + '</td>' +
+        '<td>' + statusBadge(r.status) + '</td>' +
+      '</tr>';
+    }).join('');
+    rows += '<tr class="summary-row"><td colspan="6"><strong>TOTAL INCENTIVES</strong></td>' +
+      '<td colspan="2"><strong>' + formatRM(total) + '</strong></td></tr>';
+    tbl.innerHTML = '<div class="table-container"><table class="data-table"><thead><tr>' +
+      '<th>ID</th><th>Sales Rep</th><th>Period</th><th>Total Sales</th>' +
+      '<th>Eligible</th><th>Rate</th><th>Incentive</th><th>Status</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }).catch(function(err) { tbl.innerHTML = errorState('Incentives', err.message); });
+}
+
+function openCalcModal() {
+  var monthNames = ['','January','February','March','April','May','June',
+    'July','August','September','October','November','December'];
+  openModal('🧮 Calculate Monthly Incentives',
+    '<p style="color:var(--text-sub);font-size:13px;margin-bottom:16px;">' +
+      'Calculates incentives for all sales reps based on their confirmed bookings.</p>' +
+    '<div class="form-row">' +
+      '<div class="form-group"><label class="form-label">Month</label>' +
+        '<select class="form-control" id="c_month">' + monthOptions() + '</select></div>' +
+      '<div class="form-group"><label class="form-label">Year</label>' +
+        '<select class="form-control" id="c_year">' + yearOptions() + '</select></div>' +
+    '</div>' +
+    '<div style="background:var(--primary-light);border-radius:8px;padding:12px;margin-top:8px;font-size:13px;">' +
+      '<strong>Formula:</strong> (Confirmed Sales − RM500,000) × 1%' +
+    '</div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>' +
+    '<button class="btn btn-primary" id="calcBtn" onclick="runIncentiveCalc()">🧮 Calculate</button>'
+  );
+}
+
+function runIncentiveCalc() {
+  var btn = document.getElementById('calcBtn');
+  var monthNames = ['','January','February','March','April','May','June',
+    'July','August','September','October','November','December'];
+  var monthNum = parseInt(getVal('c_month'));
+  var year = getVal('c_year');
+  setButtonLoading(btn, true);
+  api('calculateIncentive', { month: monthNames[monthNum], year: year }).then(function(res) {
+    closeModal();
+    showToast('✅ ' + res.message, 'success');
+    loadIncentives();
+  }).catch(function(err) { showToast(err.message,'error'); setButtonLoading(btn,false); });
+}
+
+// ─── ADMIN PAGE ───────────────────────────────────────────────
+
+function renderAdminPage(container) {
+  if (CURRENT_USER.role !== 'Admin') {
+    container.innerHTML = emptyState('🔒','Admin Access Only','This area is restricted to administrators.');
+    return;
+  }
+  container.innerHTML =
+    '<div class="page-header"><div class="page-header-left"><h1>⚙️ Admin Panel</h1><p>User management and system configuration</p></div></div>' +
+    '<div class="tabs" id="adminTabs">' +
+      '<div class="tab active" onclick="adminTab(\'users\',this)">👥 Users</div>' +
+      '<div class="tab" onclick="adminTab(\'emails\',this)">📧 Email Recipients</div>' +
+      '<div class="tab" onclick="adminTab(\'logs\',this)">📋 System Logs</div>' +
+    '</div>' +
+    '<div id="adminContent">' + spinnerHTML() + '</div>';
+  loadAdminUsers();
+}
+
+function adminTab(tab, el) {
+  document.querySelectorAll('#adminTabs .tab').forEach(function(t) { t.classList.remove('active'); });
+  el.classList.add('active');
+  if (tab==='users') loadAdminUsers();
+  else if (tab==='emails') loadAdminEmails();
+  else loadAdminLogs();
+}
+
+function loadAdminUsers() {
+  var c = document.getElementById('adminContent');
+  if (!c) return;
+  c.innerHTML = spinnerHTML();
+  api('getUsers', {}).then(function(res) {
+    var rows = res.data.map(function(u) {
+      return '<tr>' +
+        '<td><strong>' + u.name + '</strong></td>' +
+        '<td>' + u.email + '</td>' +
+        '<td><span class="user-role role-' + u.role.toLowerCase() + '">' + u.role + '</span></td>' +
+        '<td>' + (u.department||'-') + '</td>' +
+        '<td>' + statusBadge(u.status) + '</td>' +
+        '<td><button class="btn btn-ghost btn-sm" onclick=\'editUserModal(' + JSON.stringify(u) + ')\'>✏️ Edit</button></td>' +
+      '</tr>';
+    }).join('');
+    c.innerHTML = '<div class="card">' +
+      '<div class="card-header"><div class="card-title">👥 System Users</div>' +
+        '<button class="btn btn-primary btn-sm" onclick="openAddUserModal()">➕ Add User</button></div>' +
+      '<div style="padding:0;"><div class="table-container"><table class="data-table"><thead><tr>' +
+        '<th>Name</th><th>Email</th><th>Role</th><th>Department</th><th>Status</th><th>Actions</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div></div></div>';
+  }).catch(function(err) { c.innerHTML = errorState('Users', err.message); });
+}
+
+function openAddUserModal() {
+  openModal('➕ Add New User',
+    '<div class="form-row">' +
+      formGroup('Full Name *', 'text', 'u_name', 'First Last') +
+      formGroup('Google Email *', 'email', 'u_email', 'user@gmail.com') +
+    '</div>' +
+    '<div class="form-row">' +
+      '<div class="form-group"><label class="form-label">Role *</label>' +
+        '<select class="form-control" id="u_role"><option>Admin</option><option>HR</option><option selected>Sales</option></select></div>' +
+      '<div class="form-group"><label class="form-label">Status</label>' +
+        '<select class="form-control" id="u_status"><option selected>Active</option><option>Inactive</option></select></div>' +
+    '</div>' +
+    '<div class="form-row">' +
+      formGroup('Department', 'text', 'u_dept', 'e.g. Sales') +
+      formGroup('Phone', 'tel', 'u_phone', '+60-xx-xxx-xxxx') +
+    '</div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>' +
+    '<button class="btn btn-primary" id="addUBtn" onclick="addUserSubmit()">➕ Add User</button>'
+  );
+}
+
+function addUserSubmit() {
+  var btn = document.getElementById('addUBtn');
+  var data = { name:getVal('u_name'), email:getVal('u_email'), role:getVal('u_role'),
+    status:getVal('u_status'), department:getVal('u_dept'), phone:getVal('u_phone') };
+  if (!data.name || !data.email) { showToast('Name and email required','error'); return; }
+  setButtonLoading(btn,true);
+  api('addUser',data).then(function() {
+    closeModal(); showToast('✅ User added!','success'); loadAdminUsers();
+  }).catch(function(err){ showToast(err.message,'error'); setButtonLoading(btn,false); });
+}
+
+function editUserModal(u) {
+  openModal('✏️ Edit: ' + u.name,
+    '<div class="form-row">' +
+      '<div class="form-group"><label class="form-label">Name</label><input class="form-control" id="eu_name" value="' + u.name + '"></div>' +
+      '<div class="form-group"><label class="form-label">Email</label><input class="form-control" id="eu_email" value="' + u.email + '" readonly style="opacity:.6"></div>' +
+    '</div>' +
+    '<div class="form-row">' +
+      '<div class="form-group"><label class="form-label">Role</label><select class="form-control" id="eu_role">' +
+        ['Admin','HR','Sales'].map(function(r){ return '<option'+(r===u.role?' selected':'')+'>'+r+'</option>'; }).join('') +
+      '</select></div>' +
+      '<div class="form-group"><label class="form-label">Status</label><select class="form-control" id="eu_status">' +
+        ['Active','Inactive'].map(function(s){ return '<option'+(s===u.status?' selected':'')+'>'+s+'</option>'; }).join('') +
+      '</select></div>' +
+    '</div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>' +
+    '<button class="btn btn-primary" id="eu_btn" onclick="saveUserEdit(' + u.rowIndex + ',\'' + u.email + '\')">💾 Save</button>'
+  );
+}
+
+function saveUserEdit(rowIndex, email) {
+  var btn = document.getElementById('eu_btn');
+  setButtonLoading(btn,true);
+  api('updateUser',{ rowIndex:rowIndex, email:email, name:getVal('eu_name'), role:getVal('eu_role'), status:getVal('eu_status') }).then(function(){
+    closeModal(); showToast('✅ User updated!','success'); loadAdminUsers();
+  }).catch(function(err){ showToast(err.message,'error'); setButtonLoading(btn,false); });
+}
+
+function loadAdminEmails() {
+  var c = document.getElementById('adminContent');
+  c.innerHTML = spinnerHTML();
+  api('getEmailRecipients',{}).then(function(res) {
+    var rows = res.data.map(function(r) {
+      return '<tr><td>' + r.type + '</td><td>' + r.name + '</td><td>' + r.email + '</td>' +
+        '<td>' + r.active + '</td>' +
+        '<td><button class="btn btn-ghost btn-sm" onclick="toggleEmail('+r.rowIndex+',\''+r.active+'\')">'+
+          (r.active==='Yes'?'🔕 Disable':'🔔 Enable') + '</button></td></tr>';
+    }).join('');
+    c.innerHTML = '<div class="card"><div class="card-header"><div class="card-title">📧 Email Recipients</div>' +
+      '<button class="btn btn-primary btn-sm" onclick="addEmailModal()">➕ Add</button></div>' +
+      '<div style="padding:0;"><div class="table-container"><table class="data-table"><thead><tr>' +
+      '<th>Type</th><th>Name</th><th>Email</th><th>Active</th><th>Actions</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div></div></div>';
+  }).catch(function(err){ c.innerHTML = errorState('Email Recipients', err.message); });
+}
+
+function addEmailModal() {
+  openModal('➕ Add Email Recipient',
+    '<div class="form-row">' +
+      '<div class="form-group"><label class="form-label">Type</label><select class="form-control" id="er_type"><option>HR</option><option>Admin</option><option>Report</option></select></div>' +
+      formGroup('Name', 'text', 'er_name', 'Full Name') +
+    '</div>' +
+    formGroup('Email *', 'email', 'er_email', 'user@company.com'),
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>' +
+    '<button class="btn btn-primary" onclick="saveEmail()">Add</button>'
+  );
+}
+
+function saveEmail() {
+  api('updateEmailRecipient',{action:'add',type:getVal('er_type'),name:getVal('er_name'),email:getVal('er_email')}).then(function(){
+    closeModal(); showToast('✅ Added!','success'); loadAdminEmails();
+  }).catch(function(err){ showToast(err.message,'error'); });
+}
+
+function toggleEmail(rowIndex, active) {
+  api('updateEmailRecipient',{action:'update',rowIndex:rowIndex,active:active==='Yes'?'No':'Yes'}).then(function(){
+    showToast('Updated','success'); loadAdminEmails();
+  }).catch(function(err){ showToast(err.message,'error'); });
+}
+
+function loadAdminLogs() {
+  var c = document.getElementById('adminContent');
+  c.innerHTML = spinnerHTML();
+  api('getSystemLogs',{}).then(function(res) {
+    var rows = res.data.map(function(l) {
+      return '<tr>' +
+        '<td class="font-mono text-muted" style="font-size:11px;">' + l.timestamp + '</td>' +
+        '<td>' + l.email + '</td>' +
+        '<td><code style="background:var(--primary-light);color:var(--primary);padding:2px 6px;border-radius:3px;font-size:11px;">' + l.action + '</code></td>' +
+        '<td style="max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + l.details + '</td>' +
+        '<td>' + statusBadge(l.status==='Success'?'Approved':'Rejected').replace('Approved',l.status).replace('Rejected',l.status) + '</td>' +
+      '</tr>';
+    }).join('');
+    c.innerHTML = '<div class="card"><div class="card-header"><div class="card-title">📋 System Logs</div>' +
+      '<span class="text-muted" style="font-size:12px;">' + res.data.length + ' entries (latest first)</span></div>' +
+      '<div style="padding:0;max-height:500px;overflow-y:auto;">' +
+        '<div class="table-container"><table class="data-table"><thead><tr>' +
+        '<th>Timestamp</th><th>User</th><th>Action</th><th>Details</th><th>Status</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '</div></div>';
+  }).catch(function(err){ c.innerHTML = errorState('Logs', err.message); });
+}
+
+// ─── PROFILE PAGE ─────────────────────────────────────────────
+
+function renderProfilePage(container) {
+  var u = CURRENT_USER;
+  var perms = {
+    'Admin': ['Submit DSR','Submit Travel','Add Leads','Create Bookings','View Reports','Approve Travel','Manage Users','Admin Panel','Calculate Incentives'],
+    'HR':    ['Submit DSR','Submit Travel','Add Leads','Create Bookings','View Reports','Approve Travel','Calculate Incentives'],
+    'Sales': ['Submit DSR','Submit Travel','Add Leads','View Own Bookings']
+  };
+  var all = ['Submit DSR','Submit Travel','Add Leads','Create Bookings','View Reports','Approve Travel','Manage Users','Admin Panel','Calculate Incentives'];
+  var myPerms = perms[u.role] || [];
+  var permRows = all.map(function(p) {
+    var has = myPerms.indexOf(p) >= 0;
+    return '<div style="display:flex;align-items:center;gap:10px;font-size:13px;padding:5px 0;">' +
+      '<span style="color:' + (has?'var(--success)':'var(--danger)') + ';">' + (has?'✅':'❌') + '</span>' +
+      '<span style="color:' + (has?'var(--text-main)':'var(--text-muted)') + ';">' + p + '</span>' +
+    '</div>';
+  }).join('');
+
+  container.innerHTML =
+    '<div class="page-header"><div class="page-header-left"><h1>👤 My Profile</h1></div></div>' +
+    '<div class="grid-2">' +
+      '<div class="card"><div class="card-header"><div class="card-title">Personal Information</div></div><div class="card-body">' +
+        '<div style="text-align:center;margin-bottom:24px;">' +
+          '<div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--secondary));' +
+            'color:#fff;font-size:32px;font-weight:700;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">' +
+            u.name.charAt(0).toUpperCase() + '</div>' +
+          '<h3>' + u.name + '</h3>' +
+          '<span class="user-role role-' + u.role.toLowerCase() + '" style="margin-top:6px;display:inline-block;">' + u.role + '</span>' +
+        '</div>' +
+        detailGrid([['Email',u.email],['Role',u.role]]) +
+      '</div></div>' +
+      '<div class="card"><div class="card-header"><div class="card-title">Permissions</div></div>' +
+        '<div class="card-body">' + permRows + '</div></div>' +
+    '</div>';
+}
+
+// ─── NOTIFICATIONS ────────────────────────────────────────────
+
+function showNotifications() {
+  var badge = document.getElementById('notifBadge');
+  var count = badge ? parseInt(badge.textContent||'0') : 0;
+  if (count === 0) { showToast('No pending notifications','info'); return; }
+  openModal('🔔 Notifications',
+    '<div style="background:var(--warning-light);border-radius:8px;padding:14px;border-left:3px solid var(--warning);">' +
+      '<strong>✈️ ' + count + ' Travel Plan(s) Pending Approval</strong>' +
+      '<p style="font-size:12px;color:var(--text-sub);margin-top:6px;">Review and approve or reject below.</p>' +
+      '<button class="btn btn-warning btn-sm" style="margin-top:10px;" onclick="closeModal();showPage(\'travel\');">Review Now →</button>' +
+    '</div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Close</button>'
+  );
+}
+
+function showHelp() {
+  openModal('❓ Help & User Guide',
+    '<div style="font-size:13px;line-height:1.7;color:var(--text-sub);">' +
+      '<p><strong>📝 Daily Reports (DSR):</strong> Submit your daily client visit reports. HR is notified automatically with a PDF report.</p><br>' +
+      '<p><strong>✈️ Travel Plans:</strong> Submit travel plans for HR/Admin approval. You will receive an email with the decision.</p><br>' +
+      '<p><strong>🎯 Leads:</strong> Track clients from first contact to booking conversion. Update status as leads progress.</p><br>' +
+      '<p><strong>📅 Bookings:</strong> Record confirmed property bookings. Revenue is tracked automatically.</p><br>' +
+      '<p><strong>💰 Incentives:</strong> Monthly incentive = (Total Sales − RM500,000) × 1%. Requires sales over RM500k to be eligible.</p>' +
+    '</div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Close</button>'
+  );
+}
+
+// ─── FORM HELPERS ─────────────────────────────────────────────
+
+function formGroup(label, type, id, placeholder, value, required, extra) {
+  var req = required ? ' <span class="required">*</span>' : '';
+  var val = value !== undefined && value !== '' ? ' value="' + value + '"' : '';
+  var ph  = placeholder ? ' placeholder="' + placeholder + '"' : '';
+  var ex  = extra ? ' ' + extra : '';
+  return '<div class="form-group">' +
+    '<label class="form-label">' + label + req + '</label>' +
+    '<input type="' + (type||'text') + '" class="form-control" id="' + id + '"' + val + ph + ex + '>' +
+  '</div>';
+}
+
+function getVal(id) {
+  var el = document.getElementById(id);
+  return el ? el.value : '';
+}
+
+function detailGrid(pairs) {
+  var items = pairs.map(function(p) {
+    var span = p[2] ? ' style="grid-column:span 2;"' : '';
+    return '<div class="detail-item"' + span + '>' +
+      '<div class="key">' + p[0] + '</div>' +
+      '<div class="val">' + p[1] + '</div>' +
+    '</div>';
+  }).join('');
+  return '<div class="detail-grid">' + items + '</div>';
+}
+</script>
+
