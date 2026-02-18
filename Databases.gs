@@ -462,7 +462,11 @@ function getIncentives(user, filters) {
 }
 
 /**
- * Formula: (Total Sales - 500,000) * 0.01
+ * Multi-tier incentive formula sourced from flexibleIncentives.gs:
+ *   Tier 0: 0 – 500k   @ 0%
+ *   Tier 1: 500k – 1M  @ 1%
+ *   Tier 2: 1M+         @ 1.5%
+ * Tiers are configurable via Admin › Incentive Tiers.
  */
 function calculateIncentive(data, user) {
   requireHROrAdmin(user);
@@ -494,25 +498,33 @@ function calculateIncentive(data, user) {
     }
   }
 
-  // Calculate and save incentives
-  const BASE_THRESHOLD = 500000;
-  const RATE = 0.01;
+  // Fetch tiers from flexibleIncentives.gs (uses PropertiesService)
+  const tiersResult = getIncentiveTiers();
+  const tiers = tiersResult.success ? tiersResult.data : [
+    { from: 0,       to: 500000,  rate: 0    },
+    { from: 500000,  to: 1000000, rate: 0.01 },
+    { from: 1000000, to: null,    rate: 0.015 }
+  ];
+
+  // Derive a representative rate label for display (first non-zero tier rate)
+  const displayRate = (tiers.find(function(t) { return t.rate > 0; }) || { rate: 0.01 }).rate;
+
   let saved = 0;
 
-  Object.keys(salesTotals).forEach(rep => {
+  Object.keys(salesTotals).forEach(function(rep) {
     const total = salesTotals[rep];
-    const eligible = Math.max(0, total - BASE_THRESHOLD);
-    const incentive = eligible * RATE;
+    // Use tiered calculation from flexibleIncentives.gs
+    const incentive = calculateTieredIncentive(total);
+    const eligible  = Math.max(0, total - (tiers[0] ? tiers[0].to || 0 : 500000));
 
-    // Find email of the rep
-    const repUser = getUserByName(rep);
+    const repUser  = getUserByName(rep);
     const repEmail = repUser ? repUser.email : "";
 
     const id = "INC-" + month.substring(0,3).toUpperCase() + year + "-" + rep.replace(/\s/g,"");
 
     incentivesSheet.appendRow([
       id, rep, repEmail, month, parseInt(year),
-      total, BASE_THRESHOLD, eligible, RATE, incentive,
+      total, tiers[0] ? (tiers[0].to || 500000) : 500000, eligible, displayRate, incentive,
       incentive > 0 ? "Pending Payment" : "Not Eligible",
       "",
       Utilities.formatDate(new Date(), "Asia/Kuala_Lumpur", "yyyy-MM-dd HH:mm:ss")
@@ -521,8 +533,8 @@ function calculateIncentive(data, user) {
   });
 
   logActivity(user.email, "CALC_INCENTIVE",
-    "Calculated incentives for " + month + " " + year);
-  return { success: true, message: saved + " incentive records calculated for " + month + " " + year };
+    "Calculated tiered incentives for " + month + " " + year + " (" + tiers.length + " tiers)");
+  return { success: true, message: saved + " incentive records calculated for " + month + " " + year + " (multi-tier)" };
 }
 
 function getUserByName(name) {

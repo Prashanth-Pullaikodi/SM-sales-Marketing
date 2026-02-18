@@ -34,18 +34,23 @@ var TableEnhancer = {
         if (!found) return false;
       }
       
-      // Date range
-      if (filters.dateFrom && item.date) {
-        if (new Date(item.date) < new Date(filters.dateFrom)) return false;
-      }
-      if (filters.dateTo && item.date) {
-        if (new Date(item.date) > new Date(filters.dateTo)) return false;
+      // Date range — checks any recognised date field
+      if (filters.dateFrom || filters.dateTo) {
+        var dateVal = item.date || item.travelDate || item.bookingDate || item.checkIn || '';
+        if (dateVal) {
+          var itemDate = new Date(dateVal);
+          if (filters.dateFrom && itemDate < new Date(filters.dateFrom)) return false;
+          if (filters.dateTo   && itemDate > new Date(filters.dateTo))   return false;
+        }
       }
       
       // Dropdown filters
       if (filters.status && item.status !== filters.status) return false;
       if (filters.location && item.location !== filters.location) return false;
-      if (filters.salesRep && item.salesRep !== filters.salesRep) return false;
+      if (filters.salesRep) {
+        var repVal = item.salesRep || item.assignedTo || '';
+        if (repVal !== filters.salesRep) return false;
+      }
       
       return true;
     });

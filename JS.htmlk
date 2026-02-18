@@ -127,11 +127,14 @@ function loadPendingCounts() {
   api('getTravelList', {}).then(function(res) {
     if (!res || !res.data) return;
     var pending = res.data.filter(function(t) { return t.status === 'Pending'; }).length;
+    var badge = document.getElementById('travelCount');
+    var notif = document.getElementById('notifBadge');
     if (pending > 0) {
-      var badge = document.getElementById('travelCount');
       if (badge) { badge.textContent = pending; badge.style.display = 'flex'; }
-      var notif = document.getElementById('notifBadge');
       if (notif) { notif.textContent = pending; notif.style.display = 'flex'; }
+    } else {
+      if (badge) { badge.textContent = ''; badge.style.display = 'none'; }
+      if (notif) { notif.textContent = ''; notif.style.display = 'none'; }
     }
   }).catch(function() {});
 }
@@ -426,19 +429,25 @@ function pipelineBar(label, value, max, color, suffix) {
 // ─── DSR PAGE ─────────────────────────────────────────────────
 
 function renderDSRPage(container) {
+  var isManager = CURRENT_USER.role !== 'Sales';
   container.innerHTML =
     '<div class="page-header">' +
       '<div class="page-header-left"><h1>📝 Daily Sales Reports</h1><p>Track daily client visits and outcomes</p></div>' +
       '<div class="page-header-right"><button class="btn btn-primary" onclick="openDSRForm()">➕ New Report</button></div>' +
     '</div>' +
-    '<div class="filters-bar">' +
+    buildFilterBar({
+      id: 'dsr', search: true, dateRange: true,
+      dropdowns: isManager ? [{ id: 'salesRep', label: 'Rep' }] : [],
+      onFilter: 'dsrFilter', onClear: 'dsrClear', exportBtn: true, onExport: 'dsrExport'
+    }) +
+    '<div class="filters-bar" style="margin-top:6px;">' +
       '<select class="filter-select" id="dsrMonth">' + monthOptions() + '</select>' +
       '<select class="filter-select" id="dsrYear">' + yearOptions() + '</select>' +
-      '<button class="btn btn-ghost btn-sm" onclick="loadDSRList()">🔍 Filter</button>' +
+      '<button class="btn btn-ghost btn-sm" onclick="loadDSRList()">🔍 Load Period</button>' +
     '</div>' +
     '<div class="card">' +
       '<div class="card-header"><div class="card-title">My Reports</div><span id="dsrCount" class="text-muted" style="font-size:12px;"></span></div>' +
-      '<div id="dsrTable" style="padding:0;">' + spinnerHTML() + '</div>' +
+      '<div id="dsrTableWrap" style="padding:0;">' + spinnerHTML() + '</div>' +
     '</div>';
   loadDSRList();
 }
@@ -446,40 +455,75 @@ function renderDSRPage(container) {
 function loadDSRList() {
   var month = (document.getElementById('dsrMonth') || {}).value || '';
   var year  = (document.getElementById('dsrYear')  || {}).value || '';
-  var tbl = document.getElementById('dsrTable');
-  if (!tbl) return;
-  tbl.innerHTML = spinnerHTML();
-
+  var wrap = document.getElementById('dsrTableWrap');
+  if (!wrap) return;
+  wrap.innerHTML = spinnerHTML();
   api('getDSRList', { month: month, year: year }).then(function(res) {
-    setEl('dsrCount', (res.count || 0) + ' record(s)');
     if (!res.data || res.data.length === 0) {
-      tbl.innerHTML = emptyState('📝', 'No Reports Found', 'Submit your first daily report to get started.');
-      return;
+      wrap.innerHTML = emptyState('📝', 'No Reports Found', 'Submit your first daily report to get started.');
+      TableEnhancer.init('dsr', []); setEl('dsrCount', '0 record(s)'); return;
     }
-    var isManager = CURRENT_USER.role !== 'Sales';
-    var rows = res.data.map(function(r) {
-      return '<tr>' +
-        '<td><span class="font-mono text-primary">' + r.id + '</span></td>' +
-        '<td>' + formatDate(r.date) + '</td>' +
-        (isManager ? '<td><strong>' + r.salesRep + '</strong></td>' : '') +
-        '<td>📍 ' + r.location + '</td>' +
-        '<td>' + r.clientName + '</td>' +
-        '<td style="max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + r.purpose + '</td>' +
-        '<td>' + statusBadge(r.status) + '</td>' +
-        '<td><div class="action-btns">' +
-          '<button class="btn btn-ghost btn-sm" onclick=\'viewDSRItem(' + JSON.stringify(r) + ')\'>👁 View</button>' +
-          (r.pdfLink ? '<a href="' + r.pdfLink + '" target="_blank" class="btn btn-outline btn-sm">📄 PDF</a>' : '') +
-        '</div></td>' +
-      '</tr>';
-    }).join('');
-    tbl.innerHTML = '<div class="table-container"><table class="data-table"><thead><tr>' +
-      '<th>ID</th><th>Date</th>' + (isManager ? '<th>Sales Rep</th>' : '') +
-      '<th>Location</th><th>Client</th><th>Purpose</th><th>Status</th><th>Actions</th>' +
-      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    TableEnhancer.init('dsr', res.data, renderDSRRows);
+    var repSel = document.getElementById('dsr_salesRep');
+    if (repSel) {
+      var reps = TableEnhancer.getUniqueValues('dsr', 'salesRep');
+      repSel.innerHTML = '<option value="">All Rep</option>' +
+        reps.map(function(r) { return '<option>' + r + '</option>'; }).join('');
+    }
   }).catch(function(err) {
-    tbl.innerHTML = errorState('DSR List', err.message);
+    var w = document.getElementById('dsrTableWrap');
+    if (w) w.innerHTML = errorState('DSR List', err.message);
   });
 }
+
+function renderDSRRows(data) {
+  var isManager = CURRENT_USER.role !== 'Sales';
+  var wrap = document.getElementById('dsrTableWrap');
+  if (!wrap) return;
+  setEl('dsrCount', data.length + ' record(s)');
+  if (data.length === 0) {
+    wrap.innerHTML = emptyState('📝', 'No Reports Found', 'No matching reports for the current filters.'); return;
+  }
+  var rows = data.map(function(r) {
+    return '<tr>' +
+      '<td><span class="font-mono text-primary">' + r.id + '</span></td>' +
+      '<td>' + formatDate(r.date) + '</td>' +
+      (isManager ? '<td><strong>' + r.salesRep + '</strong></td>' : '') +
+      '<td>📍 ' + r.location + '</td>' +
+      '<td>' + r.clientName + '</td>' +
+      '<td style="max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + r.purpose + '</td>' +
+      '<td>' + statusBadge(r.status) + '</td>' +
+      '<td><div class="action-btns">' +
+        '<button class="btn btn-ghost btn-sm" onclick=\'viewDSRItem(' + JSON.stringify(r) + ')\'>👁 View</button>' +
+        (r.pdfLink ? '<a href="' + r.pdfLink + '" target="_blank" class="btn btn-outline btn-sm">📄 PDF</a>' : '') +
+      '</div></td></tr>';
+  }).join('');
+  var cols = [{ label:'ID', key:'id' }, { label:'Date', key:'date' }]
+    .concat(isManager ? [{ label:'Sales Rep', key:'salesRep' }] : [])
+    .concat([
+      { label:'Location', key:'location' }, { label:'Client', key:'clientName' },
+      { label:'Purpose', key:'purpose' },   { label:'Status', key:'status' },
+      { label:'Actions', sortable: false }
+    ]);
+  wrap.innerHTML = buildSortableTable({ tableId: 'dsrTable', columns: cols, onSort: 'dsrSort' });
+  document.getElementById('dsrTable_body').innerHTML = rows;
+}
+function dsrFilter() {
+  TableEnhancer.filter('dsr', {
+    search:   (document.getElementById('dsr_search')   ||{}).value,
+    dateFrom: (document.getElementById('dsr_dateFrom') ||{}).value,
+    dateTo:   (document.getElementById('dsr_dateTo')   ||{}).value,
+    salesRep: (document.getElementById('dsr_salesRep') ||{}).value
+  }, renderDSRRows);
+}
+function dsrSort(col)  { TableEnhancer.sort('dsr', col, renderDSRRows); }
+function dsrClear() {
+  ['dsr_search','dsr_dateFrom','dsr_dateTo','dsr_salesRep'].forEach(function(id) {
+    var el = document.getElementById(id); if (el) el.value = '';
+  });
+  renderDSRRows(TableEnhancer.data['dsr'] || []);
+}
+function dsrExport() { exportTableToCSV('dsr', 'dsr-reports.csv'); }
 
 function openDSRForm() {
   openModal('📝 Submit Daily Sales Report',
@@ -552,63 +596,102 @@ function viewDSRItem(r) {
 // ─── TRAVEL PAGE ──────────────────────────────────────────────
 
 function renderTravelPage(container) {
+  var canApprove = CURRENT_USER.role === 'Admin' || CURRENT_USER.role === 'HR';
   container.innerHTML =
     '<div class="page-header">' +
       '<div class="page-header-left"><h1>✈️ Travel Plans</h1><p>Manage business travel and approvals</p></div>' +
       '<div class="page-header-right"><button class="btn btn-primary" onclick="openTravelForm()">➕ New Travel Plan</button></div>' +
     '</div>' +
-    '<div class="filters-bar">' +
-      '<select class="filter-select" id="tvStatus">' +
-        '<option value="">All Status</option>' +
-        '<option>Pending</option><option>Approved</option><option>Rejected</option>' +
-      '</select>' +
-      '<button class="btn btn-ghost btn-sm" onclick="loadTravelList()">🔍 Filter</button>' +
-    '</div>' +
+    buildFilterBar({
+      id: 'tv', search: true, dateRange: true,
+      dropdowns: [
+        { id: 'status', label: 'Status', options: ['Pending','Approved','Rejected'] }
+      ].concat(canApprove ? [{ id: 'salesRep', label: 'Rep' }] : []),
+      onFilter: 'tvFilter', onClear: 'tvClear', exportBtn: true, onExport: 'tvExport'
+    }) +
     '<div class="card">' +
       '<div class="card-header"><div class="card-title">Travel Plans</div><span id="tvCount" class="text-muted" style="font-size:12px;"></span></div>' +
-      '<div id="tvTable" style="padding:0;">' + spinnerHTML() + '</div>' +
+      '<div id="tvTableWrap" style="padding:0;">' + spinnerHTML() + '</div>' +
     '</div>';
   loadTravelList();
 }
 
 function loadTravelList() {
-  var tbl = document.getElementById('tvTable');
-  if (!tbl) return;
-  tbl.innerHTML = spinnerHTML();
+  var wrap = document.getElementById('tvTableWrap');
+  if (!wrap) return;
+  wrap.innerHTML = spinnerHTML();
   api('getTravelList', {}).then(function(res) {
-    setEl('tvCount', (res.count||0) + ' plan(s)');
     if (!res.data || res.data.length === 0) {
-      tbl.innerHTML = emptyState('✈️','No Travel Plans','No travel plans found.');
-      return;
+      wrap.innerHTML = emptyState('✈️','No Travel Plans','No travel plans found.');
+      TableEnhancer.init('tv', []); setEl('tvCount', '0 plan(s)'); return;
     }
-    var canApprove = CURRENT_USER.role === 'Admin' || CURRENT_USER.role === 'HR';
-    var rows = res.data.map(function(r) {
-      return '<tr>' +
-        '<td><span class="font-mono text-primary">' + r.id + '</span></td>' +
-        (canApprove ? '<td><strong>' + r.salesRep + '</strong></td>' : '') +
-        '<td>' + formatDate(r.travelDate) + '</td>' +
-        '<td>✈️ ' + r.city + '</td>' +
-        '<td style="max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + r.purpose + '</td>' +
-        '<td><strong>' + formatRM(r.expectedRevenue) + '</strong></td>' +
-        '<td>' + (r.estimatedDays||1) + 'd</td>' +
-        '<td>' + statusBadge(r.status) + '</td>' +
-        '<td><div class="action-btns">' +
-          '<button class="btn btn-ghost btn-sm" onclick=\'viewTravelItem(' + JSON.stringify(r) + ')\'>👁</button>' +
-          (canApprove && r.status === 'Pending' ?
-            '<button class="btn btn-success btn-sm" onclick="doTravelAction(' + r.rowIndex + ',\'Approved\',\'' + r.id + '\')">✅</button>' +
-            '<button class="btn btn-danger btn-sm" onclick="doTravelAction(' + r.rowIndex + ',\'Rejected\',\'' + r.id + '\')">❌</button>'
-          : '') +
-        '</div></td>' +
-      '</tr>';
-    }).join('');
-    tbl.innerHTML = '<div class="table-container"><table class="data-table"><thead><tr>' +
-      '<th>ID</th>' + (canApprove ? '<th>Sales Rep</th>' : '') +
-      '<th>Travel Date</th><th>City</th><th>Purpose</th><th>Exp. Revenue</th><th>Days</th><th>Status</th><th>Actions</th>' +
-      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    TableEnhancer.init('tv', res.data, renderTVRows);
+    var repSel = document.getElementById('tv_salesRep');
+    if (repSel) {
+      var reps = TableEnhancer.getUniqueValues('tv', 'salesRep');
+      repSel.innerHTML = '<option value="">All Rep</option>' +
+        reps.map(function(r) { return '<option>' + r + '</option>'; }).join('');
+    }
   }).catch(function(err) {
-    tbl.innerHTML = errorState('Travel Plans', err.message);
+    var w = document.getElementById('tvTableWrap');
+    if (w) w.innerHTML = errorState('Travel Plans', err.message);
   });
 }
+
+function renderTVRows(data) {
+  var canApprove = CURRENT_USER.role === 'Admin' || CURRENT_USER.role === 'HR';
+  var wrap = document.getElementById('tvTableWrap');
+  if (!wrap) return;
+  setEl('tvCount', data.length + ' plan(s)');
+  if (data.length === 0) {
+    wrap.innerHTML = emptyState('✈️','No Travel Plans','No matching plans for the current filters.'); return;
+  }
+  var rows = data.map(function(r) {
+    return '<tr>' +
+      '<td><span class="font-mono text-primary">' + r.id + '</span></td>' +
+      (canApprove ? '<td><strong>' + r.salesRep + '</strong></td>' : '') +
+      '<td>' + formatDate(r.travelDate) + '</td>' +
+      '<td>✈️ ' + r.city + '</td>' +
+      '<td style="max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + r.purpose + '</td>' +
+      '<td><strong>' + formatRM(r.expectedRevenue) + '</strong></td>' +
+      '<td>' + (r.estimatedDays||1) + 'd</td>' +
+      '<td>' + statusBadge(r.status) + '</td>' +
+      '<td><div class="action-btns">' +
+        '<button class="btn btn-ghost btn-sm" onclick=\'viewTravelItem(' + JSON.stringify(r) + ')\'>👁</button>' +
+        (canApprove && r.status === 'Pending' ?
+          '<button class="btn btn-success btn-sm" onclick="doTravelAction(' + r.rowIndex + ',\'Approved\',\'' + r.id + '\')">✅</button>' +
+          '<button class="btn btn-danger btn-sm" onclick="doTravelAction(' + r.rowIndex + ',\'Rejected\',\'' + r.id + '\')">❌</button>'
+        : '') +
+      '</div></td></tr>';
+  }).join('');
+  var cols = [{ label:'ID', key:'id' }]
+    .concat(canApprove ? [{ label:'Sales Rep', key:'salesRep' }] : [])
+    .concat([
+      { label:'Travel Date', key:'travelDate' }, { label:'City', key:'city' },
+      { label:'Purpose', key:'purpose' },         { label:'Exp. Revenue', key:'expectedRevenue' },
+      { label:'Days', key:'estimatedDays' },       { label:'Status', key:'status' },
+      { label:'Actions', sortable: false }
+    ]);
+  wrap.innerHTML = buildSortableTable({ tableId: 'tvTable', columns: cols, onSort: 'tvSort' });
+  document.getElementById('tvTable_body').innerHTML = rows;
+}
+function tvFilter() {
+  TableEnhancer.filter('tv', {
+    search:   (document.getElementById('tv_search')   ||{}).value,
+    dateFrom: (document.getElementById('tv_dateFrom') ||{}).value,
+    dateTo:   (document.getElementById('tv_dateTo')   ||{}).value,
+    status:   (document.getElementById('tv_status')   ||{}).value,
+    salesRep: (document.getElementById('tv_salesRep') ||{}).value
+  }, renderTVRows);
+}
+function tvSort(col)  { TableEnhancer.sort('tv', col, renderTVRows); }
+function tvClear() {
+  ['tv_search','tv_dateFrom','tv_dateTo','tv_status','tv_salesRep'].forEach(function(id) {
+    var el = document.getElementById(id); if (el) el.value = '';
+  });
+  renderTVRows(TableEnhancer.data['tv'] || []);
+}
+function tvExport() { exportTableToCSV('tv', 'travel-plans.csv'); }
 
 function openTravelForm() {
   openModal('✈️ New Travel Plan',
@@ -700,53 +783,90 @@ function renderLeadsPage(container) {
       '<div class="page-header-left"><h1>🎯 Lead Management</h1><p>Track client conversion pipeline</p></div>' +
       '<div class="page-header-right"><button class="btn btn-primary" onclick="openLeadForm()">➕ Add Lead</button></div>' +
     '</div>' +
-    '<div class="filters-bar">' +
-      '<select class="filter-select" id="ldStatus">' +
-        '<option value="">All Status</option>' +
-        '<option>New</option><option>Qualified</option><option>Proposal Sent</option>' +
-        '<option>Won</option><option>Lost</option>' +
-      '</select>' +
-      '<button class="btn btn-ghost btn-sm" onclick="loadLeadList()">🔍 Filter</button>' +
-    '</div>' +
+    buildFilterBar({
+      id: 'ld', search: true, dateRange: true,
+      dropdowns: [
+        { id: 'status', label: 'Status', options: ['New','Qualified','Proposal Sent','Won','Lost'] },
+        { id: 'salesRep', label: 'Rep' }
+      ],
+      onFilter: 'ldFilter', onClear: 'ldClear', exportBtn: true, onExport: 'ldExport'
+    }) +
     '<div class="card">' +
       '<div class="card-header"><div class="card-title">Leads</div><span id="ldCount" class="text-muted" style="font-size:12px;"></span></div>' +
-      '<div id="ldTable" style="padding:0;">' + spinnerHTML() + '</div>' +
+      '<div id="ldTableWrap" style="padding:0;">' + spinnerHTML() + '</div>' +
     '</div>';
   loadLeadList();
 }
 
 function loadLeadList() {
-  var status = (document.getElementById('ldStatus')||{}).value || '';
-  var tbl = document.getElementById('ldTable');
-  if (!tbl) return;
-  tbl.innerHTML = spinnerHTML();
-  api('getLeads', { status: status }).then(function(res) {
-    setEl('ldCount', (res.count||0) + ' lead(s)');
+  var wrap = document.getElementById('ldTableWrap');
+  if (!wrap) return;
+  wrap.innerHTML = spinnerHTML();
+  api('getLeads', {}).then(function(res) {
     if (!res.data || res.data.length === 0) {
-      tbl.innerHTML = emptyState('🎯','No Leads Found','Add your first lead to start tracking.');
-      return;
+      wrap.innerHTML = emptyState('🎯','No Leads Found','Add your first lead to start tracking.');
+      TableEnhancer.init('ld', []); setEl('ldCount', '0 lead(s)'); return;
     }
-    var rows = res.data.map(function(r) {
-      return '<tr>' +
-        '<td><span class="font-mono text-primary">' + r.id + '</span></td>' +
-        '<td>' + formatDate(r.date) + '</td>' +
-        '<td><strong>' + r.clientName + '</strong><div style="font-size:11px;color:var(--text-muted);">' + r.contactPerson + '</div></td>' +
-        '<td>' + r.leadSource + '</td>' +
-        '<td>' + (r.budget ? formatRM(r.budget) : '-') + '</td>' +
-        '<td>' + r.assignedTo + '</td>' +
-        '<td>' + statusBadge(r.status) + '</td>' +
-        '<td><div class="action-btns">' +
-          '<button class="btn btn-ghost btn-sm" onclick=\'viewLeadItem(' + JSON.stringify(r) + ')\'>👁</button>' +
-          '<button class="btn btn-outline btn-sm" onclick="editLeadStatusModal(' + r.rowIndex + ',\'' + r.id + '\',\'' + r.status + '\')">✏️</button>' +
-        '</div></td>' +
-      '</tr>';
-    }).join('');
-    tbl.innerHTML = '<div class="table-container"><table class="data-table"><thead><tr>' +
-      '<th>ID</th><th>Date</th><th>Client</th><th>Source</th><th>Budget</th>' +
-      '<th>Assigned</th><th>Status</th><th>Actions</th>' +
-      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
-  }).catch(function(err) { tbl.innerHTML = errorState('Leads', err.message); });
+    TableEnhancer.init('ld', res.data, renderLeadRows);
+    var repSel = document.getElementById('ld_salesRep');
+    if (repSel) {
+      var reps = TableEnhancer.getUniqueValues('ld', 'assignedTo');
+      repSel.innerHTML = '<option value="">All Rep</option>' +
+        reps.map(function(r) { return '<option>' + r + '</option>'; }).join('');
+    }
+  }).catch(function(err) {
+    var w = document.getElementById('ldTableWrap');
+    if (w) w.innerHTML = errorState('Leads', err.message);
+  });
 }
+
+function renderLeadRows(data) {
+  var wrap = document.getElementById('ldTableWrap');
+  if (!wrap) return;
+  setEl('ldCount', data.length + ' lead(s)');
+  if (data.length === 0) {
+    wrap.innerHTML = emptyState('🎯','No Leads Found','No matching leads for the current filters.'); return;
+  }
+  var rows = data.map(function(r) {
+    return '<tr>' +
+      '<td><span class="font-mono text-primary">' + r.id + '</span></td>' +
+      '<td>' + formatDate(r.date) + '</td>' +
+      '<td><strong>' + r.clientName + '</strong><div style="font-size:11px;color:var(--text-muted);">' + r.contactPerson + '</div></td>' +
+      '<td>' + r.leadSource + '</td>' +
+      '<td>' + (r.budget ? formatRM(r.budget) : '-') + '</td>' +
+      '<td>' + r.assignedTo + '</td>' +
+      '<td>' + statusBadge(r.status) + '</td>' +
+      '<td><div class="action-btns">' +
+        '<button class="btn btn-ghost btn-sm" onclick=\'viewLeadItem(' + JSON.stringify(r) + ')\'>👁</button>' +
+        '<button class="btn btn-outline btn-sm" onclick="editLeadStatusModal(' + r.rowIndex + ',\'' + r.id + '\',\'' + r.status + '\')">✏️</button>' +
+      '</div></td></tr>';
+  }).join('');
+  var cols = [
+    { label:'ID', key:'id' },           { label:'Date', key:'date' },
+    { label:'Client', key:'clientName' }, { label:'Source', key:'leadSource' },
+    { label:'Budget', key:'budget' },    { label:'Assigned', key:'assignedTo' },
+    { label:'Status', key:'status' },    { label:'Actions', sortable: false }
+  ];
+  wrap.innerHTML = buildSortableTable({ tableId: 'ldTable', columns: cols, onSort: 'ldSort' });
+  document.getElementById('ldTable_body').innerHTML = rows;
+}
+function ldFilter() {
+  TableEnhancer.filter('ld', {
+    search:   (document.getElementById('ld_search')   ||{}).value,
+    dateFrom: (document.getElementById('ld_dateFrom') ||{}).value,
+    dateTo:   (document.getElementById('ld_dateTo')   ||{}).value,
+    status:   (document.getElementById('ld_status')   ||{}).value,
+    salesRep: (document.getElementById('ld_salesRep') ||{}).value
+  }, renderLeadRows);
+}
+function ldSort(col)  { TableEnhancer.sort('ld', col, renderLeadRows); }
+function ldClear() {
+  ['ld_search','ld_dateFrom','ld_dateTo','ld_status','ld_salesRep'].forEach(function(id) {
+    var el = document.getElementById(id); if (el) el.value = '';
+  });
+  renderLeadRows(TableEnhancer.data['ld'] || []);
+}
+function ldExport() { exportTableToCSV('ld', 'leads.csv'); }
 
 function openLeadForm() {
   openModal('🎯 Add New Lead',
@@ -860,46 +980,93 @@ function renderBookingsPage(container) {
         (CURRENT_USER.role !== 'Sales' ? '<button class="btn btn-primary" onclick="openBookingForm()">➕ New Booking</button>' : '') +
       '</div>' +
     '</div>' +
+    buildFilterBar({
+      id: 'bk', search: true, dateRange: true,
+      dropdowns: [
+        { id: 'status',   label: 'Status', options: ['Confirmed','Tentative','Completed'] },
+        { id: 'salesRep', label: 'Rep' }
+      ],
+      onFilter: 'bkFilter', onClear: 'bkClear', exportBtn: true, onExport: 'bkExport'
+    }) +
     '<div class="card">' +
       '<div class="card-header"><div class="card-title">All Bookings</div><span id="bkCount" class="text-muted" style="font-size:12px;"></span></div>' +
-      '<div id="bkTable" style="padding:0;">' + spinnerHTML() + '</div>' +
+      '<div id="bkTableWrap" style="padding:0;">' + spinnerHTML() + '</div>' +
     '</div>';
   loadBookingsList();
 }
 
 function loadBookingsList() {
-  var tbl = document.getElementById('bkTable');
-  if (!tbl) return;
-  tbl.innerHTML = spinnerHTML();
+  var wrap = document.getElementById('bkTableWrap');
+  if (!wrap) return;
+  wrap.innerHTML = spinnerHTML();
   api('getBookings', {}).then(function(res) {
-    setEl('bkCount', (res.count||0) + ' booking(s)');
     if (!res.data || res.data.length === 0) {
-      tbl.innerHTML = emptyState('📅','No Bookings','No bookings found.');
-      return;
+      wrap.innerHTML = emptyState('📅','No Bookings','No bookings found.');
+      TableEnhancer.init('bk', []); setEl('bkCount', '0 booking(s)'); return;
     }
-    var total = res.data.reduce(function(s,r){ return s + (parseFloat(r.totalValue)||0); }, 0);
-    var rows = res.data.map(function(r) {
-      return '<tr>' +
-        '<td><span class="font-mono text-primary">' + r.id + '</span></td>' +
-        '<td>' + formatDate(r.bookingDate) + '</td>' +
-        '<td><strong>' + r.clientName + '</strong></td>' +
-        '<td>' + r.propertyName + '</td>' +
-        '<td>' + formatDate(r.checkIn) + '</td>' +
-        '<td>' + formatDate(r.checkOut) + '</td>' +
-        '<td>' + (r.nights||0) + '</td>' +
-        '<td><strong class="text-success">' + formatRM(r.totalValue) + '</strong></td>' +
-        '<td>' + r.salesRep + '</td>' +
-        '<td>' + statusBadge(r.status) + '</td>' +
-      '</tr>';
-    }).join('');
-    rows += '<tr class="summary-row"><td colspan="7"><strong>TOTAL</strong></td>' +
-      '<td colspan="3"><strong>' + formatRM(total) + '</strong></td></tr>';
-    tbl.innerHTML = '<div class="table-container"><table class="data-table"><thead><tr>' +
-      '<th>ID</th><th>Date</th><th>Client</th><th>Property</th>' +
-      '<th>Check-In</th><th>Check-Out</th><th>Nights</th><th>Total Value</th>' +
-      '<th>Sales Rep</th><th>Status</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
-  }).catch(function(err) { tbl.innerHTML = errorState('Bookings', err.message); });
+    TableEnhancer.init('bk', res.data, renderBkRows);
+    var repSel = document.getElementById('bk_salesRep');
+    if (repSel) {
+      var reps = TableEnhancer.getUniqueValues('bk', 'salesRep');
+      repSel.innerHTML = '<option value="">All Rep</option>' +
+        reps.map(function(r) { return '<option>' + r + '</option>'; }).join('');
+    }
+  }).catch(function(err) {
+    var w = document.getElementById('bkTableWrap');
+    if (w) w.innerHTML = errorState('Bookings', err.message);
+  });
 }
+
+function renderBkRows(data) {
+  var wrap = document.getElementById('bkTableWrap');
+  if (!wrap) return;
+  setEl('bkCount', data.length + ' booking(s)');
+  if (data.length === 0) {
+    wrap.innerHTML = emptyState('📅','No Bookings','No matching bookings for the current filters.'); return;
+  }
+  var total = data.reduce(function(s,r){ return s + (parseFloat(r.totalValue)||0); }, 0);
+  var rows = data.map(function(r) {
+    return '<tr>' +
+      '<td><span class="font-mono text-primary">' + r.id + '</span></td>' +
+      '<td>' + formatDate(r.bookingDate) + '</td>' +
+      '<td><strong>' + r.clientName + '</strong></td>' +
+      '<td>' + r.propertyName + '</td>' +
+      '<td>' + formatDate(r.checkIn) + '</td>' +
+      '<td>' + formatDate(r.checkOut) + '</td>' +
+      '<td>' + (r.nights||0) + '</td>' +
+      '<td><strong class="text-success">' + formatRM(r.totalValue) + '</strong></td>' +
+      '<td>' + r.salesRep + '</td>' +
+      '<td>' + statusBadge(r.status) + '</td></tr>';
+  }).join('');
+  rows += '<tr class="summary-row"><td colspan="7"><strong>TOTAL</strong></td>' +
+    '<td colspan="3"><strong>' + formatRM(total) + '</strong></td></tr>';
+  var cols = [
+    { label:'ID', key:'id' },               { label:'Date', key:'bookingDate' },
+    { label:'Client', key:'clientName' },    { label:'Property', key:'propertyName' },
+    { label:'Check-In', key:'checkIn' },     { label:'Check-Out', key:'checkOut' },
+    { label:'Nights', key:'nights' },        { label:'Total Value', key:'totalValue' },
+    { label:'Sales Rep', key:'salesRep' },   { label:'Status', key:'status' }
+  ];
+  wrap.innerHTML = buildSortableTable({ tableId: 'bkTable', columns: cols, onSort: 'bkSort' });
+  document.getElementById('bkTable_body').innerHTML = rows;
+}
+function bkFilter() {
+  TableEnhancer.filter('bk', {
+    search:   (document.getElementById('bk_search')   ||{}).value,
+    dateFrom: (document.getElementById('bk_dateFrom') ||{}).value,
+    dateTo:   (document.getElementById('bk_dateTo')   ||{}).value,
+    status:   (document.getElementById('bk_status')   ||{}).value,
+    salesRep: (document.getElementById('bk_salesRep') ||{}).value
+  }, renderBkRows);
+}
+function bkSort(col)  { TableEnhancer.sort('bk', col, renderBkRows); }
+function bkClear() {
+  ['bk_search','bk_dateFrom','bk_dateTo','bk_status','bk_salesRep'].forEach(function(id) {
+    var el = document.getElementById(id); if (el) el.value = '';
+  });
+  renderBkRows(TableEnhancer.data['bk'] || []);
+}
+function bkExport() { exportTableToCSV('bk', 'bookings.csv'); }
 
 function openBookingForm() {
   openModal('📅 Create Booking',
@@ -978,9 +1145,10 @@ function renderReportsPage(container) {
       '<select class="filter-select" id="rMonth">' + monthOptions() + '</select>' +
       '<select class="filter-select" id="rYear">' + yearOptions() + '</select>' +
       '<button class="btn btn-primary btn-sm" onclick="loadMonthlyReport()">📊 Generate</button>' +
-      '<button class="btn btn-outline btn-sm" onclick="doExport(\'monthly\')">📥 Export CSV</button>' +
-      '<button class="btn btn-ghost btn-sm" onclick="doExport(\'bookings\')">📥 Bookings</button>' +
-      '<button class="btn btn-ghost btn-sm" onclick="doExport(\'leads\')">📥 Leads</button>' +
+      '<button class="btn btn-outline btn-sm" onclick="doExport(\'monthly\')">📥 CSV</button>' +
+      '<button class="btn btn-ghost btn-sm" onclick="doExport(\'bookings\')">📥 Bookings CSV</button>' +
+      '<button class="btn btn-ghost btn-sm" onclick="doExport(\'leads\')">📥 Leads CSV</button>' +
+      '<button class="btn btn-outline btn-sm" onclick="doReportPDF()">📄 PDF Report</button>' +
     '</div>' +
     '<div id="reportContent">' +
       '<div class="card"><div class="card-body">' + emptyState('📊','Select Period','Choose month and year then click Generate') + '</div></div>' +
@@ -1057,26 +1225,37 @@ function doExport(type) {
 // ─── INCENTIVES PAGE ──────────────────────────────────────────
 
 function renderIncentivesPage(container) {
+  var isManager = CURRENT_USER.role !== 'Sales';
   container.innerHTML =
     '<div class="page-header">' +
       '<div class="page-header-left"><h1>💰 Incentive Calculator</h1>' +
-        '<p>Formula: (Total Sales − RM500,000) × 1%</p></div>' +
-      '<div class="page-header-right">' +
-        (CURRENT_USER.role !== 'Sales' ? '<button class="btn btn-primary" onclick="openCalcModal()">🧮 Calculate</button>' : '') +
+        '<p>Multi-tier: 0–500k @ 0% · 500k–1M @ 1% · 1M+ @ 1.5%</p></div>' +
+      '<div class="page-header-right" style="display:flex;gap:8px;flex-wrap:wrap;">' +
+        (isManager ? '<button class="btn btn-outline btn-sm" onclick="doIncentivePDF()">📄 PDF Report</button>' : '') +
+        (isManager ? '<button class="btn btn-ghost btn-sm" onclick="openRecalcModal()">🔄 Recalculate Past Month</button>' : '') +
+        (isManager ? '<button class="btn btn-primary" onclick="openCalcModal()">🧮 Calculate</button>' : '') +
       '</div>' +
     '</div>' +
     '<div class="card mb-24"><div class="card-body">' +
       '<div style="display:flex;flex-wrap:wrap;gap:24px;align-items:center;">' +
-        '<div><div style="font-size:11px;color:var(--text-muted);">BASE THRESHOLD</div>' +
-          '<div style="font-size:22px;font-weight:700;">RM 500,000</div></div>' +
-        '<div><div style="font-size:11px;color:var(--text-muted);">RATE</div>' +
-          '<div style="font-size:22px;font-weight:700;color:var(--success);">1%</div></div>' +
-        '<div><div style="font-size:11px;color:var(--text-muted);">EXAMPLE</div>' +
-          '<div style="font-size:13px;color:var(--text-sub);">RM 700k sales → (700k−500k) × 1% = ' +
-            '<strong style="color:var(--success);">RM 2,000</strong></div></div>' +
+        '<div><div style="font-size:11px;color:var(--text-muted);">TIER 1</div>' +
+          '<div style="font-size:18px;font-weight:700;">0 – RM500k</div>' +
+          '<div style="font-size:12px;color:var(--text-muted);">0% (no incentive)</div></div>' +
+        '<div><div style="font-size:11px;color:var(--text-muted);">TIER 2</div>' +
+          '<div style="font-size:18px;font-weight:700;color:var(--success);">500k – 1M</div>' +
+          '<div style="font-size:12px;color:var(--text-muted);">1% on portion</div></div>' +
+        '<div><div style="font-size:11px;color:var(--text-muted);">TIER 3</div>' +
+          '<div style="font-size:18px;font-weight:700;color:var(--primary);">Above 1M</div>' +
+          '<div style="font-size:12px;color:var(--text-muted);">1.5% on portion</div></div>' +
+        '<div style="border-left:2px solid var(--border);padding-left:20px;">' +
+          '<div style="font-size:11px;color:var(--text-muted);">EXAMPLE (RM 1.2M)</div>' +
+          '<div style="font-size:12px;color:var(--text-sub);">' +
+            '500k×0% + 500k×1% + 200k×1.5% = ' +
+            '<strong style="color:var(--success);">RM 8,000</strong></div></div>' +
       '</div></div></div>' +
     '<div class="filters-bar">' +
       '<select class="filter-select" id="incYear" onchange="loadIncentives()">' + yearOptions() + '</select>' +
+      '<button class="btn btn-outline btn-sm" onclick="exportTableToCSV(\'inc\',\'incentives.csv\')">📥 Export CSV</button>' +
     '</div>' +
     '<div class="card"><div class="card-header"><div class="card-title">Incentive Records</div>' +
       '<span id="incCount" class="text-muted" style="font-size:12px;"></span></div>' +
@@ -1094,8 +1273,9 @@ function loadIncentives() {
     setEl('incCount', (res.count||0) + ' record(s)');
     if (!res.data || res.data.length === 0) {
       tbl.innerHTML = emptyState('💰','No Records','Run the calculator to generate incentive records.');
-      return;
+      TableEnhancer.init('inc', []); return;
     }
+    TableEnhancer.init('inc', res.data);
     var total = res.data.reduce(function(s,r){ return s+(parseFloat(r.incentiveAmount)||0); },0);
     var rows = res.data.map(function(r) {
       return '<tr>' +
@@ -1104,7 +1284,7 @@ function loadIncentives() {
         '<td>' + r.month + ' ' + r.year + '</td>' +
         '<td>' + formatRM(r.totalSales) + '</td>' +
         '<td>' + (r.eligibleAmount > 0 ? formatRM(r.eligibleAmount) : '<span class="text-muted">—</span>') + '</td>' +
-        '<td>' + ((r.incentiveRate||0.01)*100).toFixed(0) + '%</td>' +
+        '<td>' + ((r.incentiveRate||0.01)*100).toFixed(1) + '%</td>' +
         '<td class="' + (r.incentiveAmount > 0 ? 'text-success font-bold' : 'text-muted') + '">' +
           (r.incentiveAmount > 0 ? formatRM(r.incentiveAmount) : '—') + '</td>' +
         '<td>' + statusBadge(r.status) + '</td>' +
@@ -1124,7 +1304,7 @@ function openCalcModal() {
     'July','August','September','October','November','December'];
   openModal('🧮 Calculate Monthly Incentives',
     '<p style="color:var(--text-sub);font-size:13px;margin-bottom:16px;">' +
-      'Calculates incentives for all sales reps based on their confirmed bookings.</p>' +
+      'Calculates incentives for all sales reps based on their confirmed bookings using the multi-tier structure.</p>' +
     '<div class="form-row">' +
       '<div class="form-group"><label class="form-label">Month</label>' +
         '<select class="form-control" id="c_month">' + monthOptions() + '</select></div>' +
@@ -1132,11 +1312,71 @@ function openCalcModal() {
         '<select class="form-control" id="c_year">' + yearOptions() + '</select></div>' +
     '</div>' +
     '<div style="background:var(--primary-light);border-radius:8px;padding:12px;margin-top:8px;font-size:13px;">' +
-      '<strong>Formula:</strong> (Confirmed Sales − RM500,000) × 1%' +
+      '<strong>Multi-tier Formula:</strong><br>' +
+      '• 0 – RM500,000 → 0%<br>' +
+      '• RM500,001 – RM1,000,000 → 1% on that portion<br>' +
+      '• Above RM1,000,000 → 1.5% on that portion' +
     '</div>',
     '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>' +
     '<button class="btn btn-primary" id="calcBtn" onclick="runIncentiveCalc()">🧮 Calculate</button>'
   );
+}
+
+function openRecalcModal() {
+  openModal('🔄 Recalculate Past Month Incentives',
+    '<p style="color:var(--text-sub);font-size:13px;margin-bottom:16px;">' +
+      'Re-runs the multi-tier calculation for a past month, replacing existing records.</p>' +
+    '<div class="form-row">' +
+      '<div class="form-group"><label class="form-label">Month</label>' +
+        '<select class="form-control" id="rc_month">' + monthOptions() + '</select></div>' +
+      '<div class="form-group"><label class="form-label">Year</label>' +
+        '<select class="form-control" id="rc_year">' + yearOptions() + '</select></div>' +
+    '</div>' +
+    '<div style="background:var(--warning-light);border-radius:8px;padding:12px;margin-top:8px;font-size:13px;border-left:3px solid var(--warning);">' +
+      '⚠️ Existing records for this period will be overwritten.' +
+    '</div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>' +
+    '<button class="btn btn-warning" id="rcBtn" onclick="runRecalc()">🔄 Recalculate</button>'
+  );
+}
+
+function runRecalc() {
+  var btn = document.getElementById('rcBtn');
+  var monthNames = ['','January','February','March','April','May','June',
+    'July','August','September','October','November','December'];
+  var monthNum = parseInt(getVal('rc_month'));
+  var year = getVal('rc_year');
+  setButtonLoading(btn, true);
+  api('recalculateIncentivesForMonth', { month: monthNames[monthNum], year: year }).then(function(res) {
+    closeModal();
+    showToast('✅ ' + (res.message || 'Recalculation complete'), 'success');
+    loadIncentives();
+  }).catch(function(err) { showToast(err.message,'error'); setButtonLoading(btn,false); });
+}
+
+function doIncentivePDF() {
+  var year = (document.getElementById('incYear')||{}).value || new Date().getFullYear();
+  api('generateDetailedIncentivePDF', { year: year }).then(function(res) {
+    if (res.downloadUrl) {
+      window.open(res.downloadUrl, '_blank');
+      showToast('📄 Incentive PDF ready!', 'success');
+    } else {
+      showToast(res.message || 'PDF generated', 'success');
+    }
+  }).catch(function(err) { showToast(err.message, 'error'); });
+}
+
+function doReportPDF() {
+  var month = (document.getElementById('rMonth')||{}).value || (new Date().getMonth()+1);
+  var year  = (document.getElementById('rYear') ||{}).value || new Date().getFullYear();
+  api('generateManagementReportPDF', { month: month, year: year }).then(function(res) {
+    if (res.downloadUrl) {
+      window.open(res.downloadUrl, '_blank');
+      showToast('📄 Management PDF ready!', 'success');
+    } else {
+      showToast(res.message || 'PDF generated', 'success');
+    }
+  }).catch(function(err) { showToast(err.message, 'error'); });
 }
 
 function runIncentiveCalc() {
