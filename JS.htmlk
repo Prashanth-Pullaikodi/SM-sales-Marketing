@@ -59,25 +59,72 @@ function setUserUI() {
   }
 }
 
-// ─── SERVER API ───────────────────────────────────────────────
-// Single function for all server calls via google.script.run
+// ─── SERVER API + CLIENT-SIDE CACHE ──────────────────────────
+// Mutations skip cache; reads are cached for 30 s.
+var _apiCache = {};
+var _API_TTL  = 30000; // 30 seconds
+var _SKIP_CACHE = {
+  submitDSR:1, submitTravel:1, updateTravelStatus:1,
+  submitLead:1, updateLeadStatus:1, submitBooking:1,
+  calculateIncentive:1, recalculateIncentivesForMonth:1,
+  updateIncentiveTiers:1, addUser:1, updateUser:1,
+  updateEmailRecipient:1, getLastModified:1
+};
 
-function api(action, data) {
+function api(action, data, opts) {
+  var noCache = !!(opts && opts.noCache) || !!_SKIP_CACHE[action];
+  var key = action + '::' + JSON.stringify(data || {});
+
+  if (!noCache && _apiCache[key] && (Date.now() - _apiCache[key].t) < _API_TTL) {
+    return Promise.resolve(_apiCache[key].d);
+  }
+
   return new Promise(function(resolve, reject) {
-    var payload = JSON.stringify(data || {});
     google.script.run
       .withSuccessHandler(function(result) {
         if (result && result.success === false) {
           reject(new Error(result.error || 'Server error'));
-        } else {
-          resolve(result);
+          return;
         }
+        if (!noCache) _apiCache[key] = { d: result, t: Date.now() };
+        resolve(result);
       })
       .withFailureHandler(function(err) {
         reject(new Error(err.message || 'Connection error'));
       })
-      .handleClientRequest(action, payload);
+      .handleClientRequest(action, JSON.stringify(data || {}));
   });
+}
+
+/** Evict cache entries whose key starts with the given action prefix. */
+function invalidateCache(prefix) {
+  Object.keys(_apiCache).forEach(function(k) {
+    if (!prefix || k.indexOf(prefix + '::') === 0) delete _apiCache[k];
+  });
+}
+
+// ─── REAL-TIME BOOKING POLL ───────────────────────────────────
+var _bkPollTimer = null;
+var _bkLastTs    = null;
+
+function startBookingPoll() {
+  if (_bkPollTimer) return;
+  _bkPollTimer = setInterval(function() {
+    api('getLastModified', { sheet: 'bookings' }).then(function(res) {
+      if (res.timestamp && res.timestamp !== _bkLastTs) {
+        _bkLastTs = res.timestamp;
+        invalidateCache('getBookings');
+        if (_currentPage === 'bookings') {
+          showToast('🔄 Bookings updated', 'info');
+          loadBookingsList();
+        }
+      }
+    }).catch(function(){});
+  }, 20000); // poll every 20 seconds
+}
+
+function stopBookingPoll() {
+  if (_bkPollTimer) { clearInterval(_bkPollTimer); _bkPollTimer = null; }
 }
 
 // ─── NAVIGATION ───────────────────────────────────────────────
@@ -107,6 +154,13 @@ function showPage(pageName) {
   }
   target.style.display = 'block';
   target.classList.add('active');
+
+  // Start / stop real-time booking poll
+  if (pageName === 'bookings') {
+    startBookingPoll();
+  } else {
+    stopBookingPoll();
+  }
 
   // Render content
   switch(pageName) {
@@ -566,6 +620,7 @@ function submitDSR() {
   setButtonLoading(btn, true);
   api('submitDSR', data).then(function(res) {
     closeModal();
+    invalidateCache('getDSRList');
     showToast('✅ Report ' + res.id + ' submitted! HR notified by email.', 'success', 6000);
     loadDSRList();
   }).catch(function(err) {
@@ -738,6 +793,7 @@ function submitTravel() {
   setButtonLoading(btn, true);
   api('submitTravel', data).then(function(res) {
     closeModal();
+    invalidateCache('getTravelList');
     showToast('✅ Travel plan ' + res.id + ' submitted! HR notified.', 'success');
     loadTravelList();
   }).catch(function(err) {
@@ -749,6 +805,7 @@ function submitTravel() {
 function doTravelAction(rowIndex, status, id) {
   var notes = status === 'Rejected' ? (prompt('Reason for rejection (optional):') || '') : '';
   api('updateTravelStatus', { rowIndex: rowIndex, status: status, notes: notes }).then(function() {
+    invalidateCache('getTravelList');
     showToast('Travel plan ' + id + ' marked as ' + status, status === 'Approved' ? 'success' : 'warning');
     loadTravelList();
     loadPendingCounts();
@@ -1125,6 +1182,7 @@ function submitBooking() {
   setButtonLoading(btn, true);
   api('submitBooking', data).then(function(res) {
     closeModal();
+    invalidateCache('getBookings');
     showToast('✅ Booking ' + res.id + ' created!', 'success');
     loadBookingsList();
   }).catch(function(err) { showToast(err.message,'error'); setButtonLoading(btn,false); });
@@ -1405,6 +1463,7 @@ function renderAdminPage(container) {
     '<div class="tabs" id="adminTabs">' +
       '<div class="tab active" onclick="adminTab(\'users\',this)">👥 Users</div>' +
       '<div class="tab" onclick="adminTab(\'emails\',this)">📧 Email Recipients</div>' +
+      '<div class="tab" onclick="adminTab(\'tiers\',this)">💰 Incentive Tiers</div>' +
       '<div class="tab" onclick="adminTab(\'logs\',this)">📋 System Logs</div>' +
     '</div>' +
     '<div id="adminContent">' + spinnerHTML() + '</div>';
@@ -1416,6 +1475,7 @@ function adminTab(tab, el) {
   el.classList.add('active');
   if (tab==='users') loadAdminUsers();
   else if (tab==='emails') loadAdminEmails();
+  else if (tab==='tiers') loadTierConfig();
   else loadAdminLogs();
 }
 
@@ -1565,6 +1625,125 @@ function loadAdminLogs() {
         '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
       '</div></div>';
   }).catch(function(err){ c.innerHTML = errorState('Logs', err.message); });
+}
+
+// ─── INCENTIVE TIER CONFIG (Admin) ────────────────────────────
+
+function loadTierConfig() {
+  var c = document.getElementById('adminContent');
+  if (!c) return;
+  c.innerHTML = spinnerHTML();
+  api('getIncentiveTiers', {}).then(function(res) {
+    var tiers = res.data || [];
+    c.innerHTML =
+      '<div class="card">' +
+        '<div class="card-header">' +
+          '<div class="card-title">💰 Incentive Tier Configuration</div>' +
+          '<div style="display:flex;gap:8px;">' +
+            '<button class="btn btn-outline btn-sm" onclick="addTierRow()">➕ Add Tier</button>' +
+            '<button class="btn btn-primary btn-sm" id="saveTierBtn" onclick="saveTierConfig()">💾 Save Tiers</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="card-body">' +
+          '<p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">' +
+            'Define progressive commission tiers. Each tier applies only to the sales amount <em>within</em> its bracket (like income tax).' +
+          '</p>' +
+          '<div id="tierRows"></div>' +
+          '<div style="background:var(--primary-light);border-radius:8px;padding:14px;margin-top:16px;font-size:13px;">' +
+            '<strong>💡 Example:</strong> If Tier 1 is 0–500k@0%, Tier 2 is 500k–1M@1%, Tier 3 is 1M+@1.5%,<br>' +
+            'then RM 1.2M sales = (0×500k) + (0.01×500k) + (0.015×200k) = <strong>RM 8,000</strong>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    renderTierRows(tiers);
+  }).catch(function(err) {
+    c.innerHTML = errorState('Incentive Tiers', err.message);
+  });
+}
+
+function renderTierRows(tiers) {
+  var wrap = document.getElementById('tierRows');
+  if (!wrap) return;
+  wrap.innerHTML =
+    '<table class="data-table" style="margin-bottom:0;">' +
+      '<thead><tr>' +
+        '<th style="width:40px;">#</th>' +
+        '<th>Label</th>' +
+        '<th>From (RM)</th>' +
+        '<th>To (RM) — leave blank for unlimited</th>' +
+        '<th>Rate (%)</th>' +
+        '<th style="width:60px;"></th>' +
+      '</tr></thead>' +
+      '<tbody id="tierBody"></tbody>' +
+    '</table>';
+  var body = document.getElementById('tierBody');
+  tiers.forEach(function(t, i) { body.innerHTML += buildTierRow(i, t); });
+  if (tiers.length === 0) addTierRow();
+}
+
+function buildTierRow(i, t) {
+  return '<tr id="tier_row_' + i + '">' +
+    '<td style="color:var(--text-muted);font-weight:700;">' + (i+1) + '</td>' +
+    '<td><input class="form-control" id="t_label_' + i + '" value="' + (t.label||'Tier '+(i+1)) + '" placeholder="e.g. Base"></td>' +
+    '<td><input class="form-control" id="t_from_' + i + '" type="number" value="' + (t.from||0) + '" min="0"></td>' +
+    '<td><input class="form-control" id="t_to_' + i + '" type="number" value="' + (t.to||'') + '" min="0" placeholder="Unlimited"></td>' +
+    '<td>' +
+      '<div style="display:flex;align-items:center;gap:6px;">' +
+        '<input class="form-control" id="t_rate_' + i + '" type="number" value="' + ((t.rate||0)*100).toFixed(2) + '" min="0" max="100" step="0.01" style="width:80px;">' +
+        '<span style="color:var(--text-muted);">%</span>' +
+      '</div>' +
+    '</td>' +
+    '<td><button class="btn btn-danger btn-sm" onclick="deleteTierRow(' + i + ')">🗑</button></td>' +
+  '</tr>';
+}
+
+var _tierCount = 0;
+function addTierRow() {
+  var body = document.getElementById('tierBody');
+  if (!body) { loadTierConfig(); return; }
+  _tierCount++;
+  var idx = body.rows.length;
+  var row = document.createElement('tr');
+  row.id = 'tier_row_' + idx;
+  row.innerHTML = buildTierRow(idx, { label: 'Tier ' + (idx+1), from: 0, to: '', rate: 0 }).replace(/<tr[^>]*>/, '').replace(/<\/tr>$/, '');
+  body.appendChild(row);
+}
+
+function deleteTierRow(i) {
+  var row = document.getElementById('tier_row_' + i);
+  if (row) row.remove();
+  // Re-number visible rows
+  var rows = document.querySelectorAll('#tierBody tr');
+  rows.forEach(function(r, idx) { var td = r.querySelector('td'); if (td) td.textContent = idx+1; });
+}
+
+function saveTierConfig() {
+  var btn = document.getElementById('saveTierBtn');
+  setButtonLoading(btn, true);
+  var tiers = [];
+  var rows = document.querySelectorAll('#tierBody tr');
+  var valid = true;
+  rows.forEach(function(row, i) {
+    var id = row.id.replace('tier_row_', '');
+    var from  = parseFloat(document.getElementById('t_from_'  + id).value);
+    var toRaw = document.getElementById('t_to_'   + id).value.trim();
+    var to    = toRaw === '' ? null : parseFloat(toRaw);
+    var rate  = parseFloat(document.getElementById('t_rate_'  + id).value) / 100;
+    var label = document.getElementById('t_label_' + id).value || ('Tier ' + (i+1));
+    if (isNaN(from) || isNaN(rate) || rate < 0 || rate > 1) {
+      showToast('Invalid values in tier ' + (i+1), 'error');
+      valid = false;
+    }
+    tiers.push({ from: from, to: to, rate: rate, label: label });
+  });
+  if (!valid) { setButtonLoading(btn, false); return; }
+  api('updateIncentiveTiers', { tiers: tiers }).then(function(res) {
+    showToast('✅ Incentive tiers saved!', 'success');
+    setButtonLoading(btn, false);
+  }).catch(function(err) {
+    showToast(err.message, 'error');
+    setButtonLoading(btn, false);
+  });
 }
 
 // ─── PROFILE PAGE ─────────────────────────────────────────────

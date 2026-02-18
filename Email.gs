@@ -4,7 +4,7 @@
  * ============================================================
  */
 
-const EMAIL_LOGO = "https://img.icons8.com/color/96/sandal.png";
+const EMAIL_LOGO = "https://sandalmistresort.com/wp-content/uploads/2024/09/logo-white.png";
 const COMPANY_NAME = "Sandal Mist";
 const COMPANY_TAGLINE = "Hospitality Sales Excellence";
 const COMPANY_FOOTER = "Sandal Mist Sales & HR Management System | Confidential";
@@ -24,7 +24,7 @@ function getEmailHeader(title, subtitle) {
   .wrapper { max-width: 680px; margin: 20px auto; }
   .header { background: linear-gradient(135deg, #1a237e 0%, #0d47a1 50%, #1565c0 100%);
     padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center; }
-  .header img { width: 60px; height: 60px; margin-bottom: 12px; }
+  .header img { max-width: 200px; height: 50px; object-fit: contain; margin-bottom: 12px; display: block; margin-left: auto; margin-right: auto; }
   .header h1 { color: #fff; font-size: 24px; font-weight: 700; letter-spacing: 1px; }
   .header p { color: rgba(255,255,255,0.8); font-size: 13px; margin-top: 4px; }
   .badge { display: inline-block; background: rgba(255,255,255,0.2);
@@ -171,15 +171,28 @@ function sendDSREmail(id, data, user, pdfLink) {
 
 // ─── TRAVEL APPROVAL EMAIL ────────────────────────────────────
 
-function sendTravelApprovalEmail(id, data, user) {
+function sendTravelApprovalEmail(id, data, user, rowIndex) {
   const recipients = getHREmailList();
   if (recipients.length === 0) return;
+
+  // Generate a one-time secure token (valid 48 hours)
+  const token = Utilities.getUuid();
+  PropertiesService.getScriptProperties().setProperty('tv_token_' + id, JSON.stringify({
+    token:    token,
+    rowIndex: rowIndex,
+    expires:  Date.now() + (48 * 60 * 60 * 1000),
+    used:     false
+  }));
+
+  const webUrl    = ScriptApp.getService().getUrl();
+  const approveUrl = webUrl + '?tvAction=approve&id=' + encodeURIComponent(id) + '&token=' + token;
+  const rejectUrl  = webUrl + '?tvAction=reject&id='  + encodeURIComponent(id) + '&token=' + token;
 
   const html = getEmailHeader("Travel Plan Approval Required",
     "A new travel plan needs your approval") + `
     <div style="background:#fff3e0;border-left:4px solid #e65100;padding:14px 18px;
       border-radius:0 8px 8px 0;margin-bottom:20px;">
-      <strong>⚠️ Action Required:</strong> Please review and approve/reject this travel request.
+      <strong>⚠️ Action Required:</strong> Please review and approve or reject this travel request.
     </div>
 
     <div class="info-grid">
@@ -215,13 +228,26 @@ function sendTravelApprovalEmail(id, data, user) {
           <td><span class="status-badge status-pending">Pending Approval</span></td></tr>
     </table>
 
-    <p style="font-size:13px;color:#555;line-height:1.6;">
-      Please log into the Sandal Mist SHRMS to approve or reject this travel plan.
-      The sales representative will be notified of your decision automatically.
+    <div style="text-align:center;margin:30px 0;">
+      <p style="font-size:13px;color:#555;margin-bottom:20px;">
+        Click a button below to take action directly from your email.<br>
+        The sales representative will be notified automatically.
+      </p>
+      <a href="${approveUrl}" class="btn btn-success"
+        style="display:inline-block;padding:14px 36px;background:#2e7d32;color:#fff;
+          text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;
+          margin:0 10px;">✅ Approve</a>
+      <a href="${rejectUrl}" class="btn btn-danger"
+        style="display:inline-block;padding:14px 36px;background:#c62828;color:#fff;
+          text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;
+          margin:0 10px;">❌ Reject</a>
+    </div>
+    <p style="font-size:11px;color:#aaa;text-align:center;">
+      These links expire in 48 hours and can only be used once.
     </p>
   ` + getEmailFooter();
 
-  const subject = `✈️ Travel Approval Required: ${id} - ${user.name} to ${data.city}`;
+  const subject = `✈️ Approval Required: ${id} — ${user.name} to ${data.city}`;
 
   recipients.forEach(email => {
     try {
