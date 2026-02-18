@@ -126,7 +126,7 @@ function generateIncentivePDF(filters, user) {
     '.amount { text-align: right; font-weight: bold; color: #2e7d32; }' +
     '</style></head><body>' +
     '<div class="header">' +
-      '<h1>Sandal Mist - Incentive Report</h1>' +
+      '<h1>SandalMist - Incentive Report</h1>' +
       '<p style="margin:5px 0 0;color:#666;">Generated: ' + Utilities.formatDate(new Date(), 'UTC', 'dd MMM yyyy HH:mm') + '</p>' +
     '</div>' +
     '<div class="filters"><strong>Filters Applied:</strong> ' + filterStr + '</div>' +
@@ -163,7 +163,7 @@ function generateIncentivePDF(filters, user) {
   
   html += '</tbody></table>' +
     '<div class="footer">' +
-      '<p>Sandal Mist Sales & HR Management System | Confidential</p>' +
+      '<p>SandalMist Sales & Marketing Management System | Confidential</p>' +
       '<p>This report contains ' + records.length + ' incentive record(s)</p>' +
     '</div>' +
   '</body></html>';
@@ -268,7 +268,7 @@ function buildMonthlyReportPDF(reportData, month, year) {
     '.rank { text-align: center; font-weight: bold; color: #f4b400; }' +
     '</style></head><body>' +
     '<div class="header">' +
-      '<h1>Sandal Mist - Monthly Performance Report</h1>' +
+      '<h1>SandalMist - Monthly Performance Report</h1>' +
       '<p style="margin:5px 0;">Period: ' + month + ' ' + year + '</p>' +
       '<p style="margin:0;font-size:10px;color:#666;">Generated: ' + 
         Utilities.formatDate(new Date(), 'UTC', 'dd MMM yyyy HH:mm') + '</p>' +
@@ -313,7 +313,7 @@ function buildMonthlyReportPDF(reportData, month, year) {
     '<td colspan="2"></td>' +
   '</tr></tbody></table>' +
   '<div style="margin-top:20px;font-size:9px;color:#999;text-align:center;border-top:1px solid #eee;padding-top:10px;">' +
-    'Sandal Mist SHRMS | Confidential | ' + reportData.length + ' sales representatives' +
+    'SandalMist SM SalesBoard | Confidential | ' + reportData.length + ' sales representatives' +
   '</div></body></html>';
   
   return html;
@@ -379,14 +379,14 @@ function pdfHeader(title, period) {
     '<div class="ph">' +
       '<img src="https://sandalmistresort.com/wp-content/uploads/2024/09/logo-white.png"' +
       ' style="height:36px;background:#1565c0;border-radius:4px;padding:4px 8px;">' +
-      '<h1>Sandal Mist — ' + title + '</h1>' +
+      '<h1>SandalMist — ' + title + '</h1>' +
       (period ? '<p>Period: ' + period + '</p>' : '') +
       '<p>Generated: ' + ts + '</p>' +
     '</div>';
 }
 
 function pdfFooter(count, label) {
-  return '<div class="foot"><p>Sandal Mist Sales &amp; HR Management System | Confidential</p>' +
+  return '<div class="foot"><p>SandalMist Sales &amp; Marketing Management System | Confidential</p>' +
     '<p>This report contains ' + count + ' ' + (label || 'record') + (count !== 1 ? 's' : '') + '</p>' +
     '</div></body></html>';
 }

@@ -362,7 +362,7 @@ function buildIncentivePDFWithTiers(records, tiers, filters) {
     '.amount{text-align:right;font-weight:bold;color:#2e7d32;}' +
     '</style></head><body>' +
     '<div class="header">' +
-      '<h1>Sandal Mist - Detailed Incentive Report</h1>' +
+      '<h1>SandalMist - Detailed Incentive Report</h1>' +
       '<p style="margin:5px 0 0;color:#666;">Generated: ' +
       Utilities.formatDate(new Date(), 'UTC', 'dd MMM yyyy HH:mm') + '</p>' +
     '</div>' +
@@ -412,7 +412,7 @@ function buildIncentivePDFWithTiers(records, tiers, filters) {
     '<td></td>' +
   '</tr></tbody></table>' +
   '<div style="margin-top:15px;font-size:8px;color:#999;text-align:center;border-top:1px solid #eee;padding-top:8px;">' +
-    'Sandal Mist SHRMS | Confidential | ' + records.length + ' record(s)' +
+    'SandalMist SM SalesBoard | Confidential | ' + records.length + ' record(s)' +
   '</div></body></html>';
   
   return html;
