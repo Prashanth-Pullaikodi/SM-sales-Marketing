@@ -23,6 +23,10 @@ function bootApp() {
       closeUserMenu();
     }
   });
+  // Mobile: swipe right/left to open/close sidebar
+  initSwipeGesture();
+  // Desktop/tablet: keyboard shortcuts
+  initKeyboardShortcuts();
 }
 
 // ─── USER UI SETUP ────────────────────────────────────────────
@@ -176,8 +180,12 @@ function showPage(pageName) {
   // Don't block reload of same page — remove the early return
   _currentPage = pageName;
 
-  // Update nav active state
+  // Update sidebar nav active state
   document.querySelectorAll('.nav-item').forEach(function(el) {
+    el.classList.toggle('active', el.getAttribute('data-page') === pageName);
+  });
+  // Sync mobile bottom nav active state
+  document.querySelectorAll('.mbn-item').forEach(function(el) {
     el.classList.toggle('active', el.getAttribute('data-page') === pageName);
   });
 
@@ -271,6 +279,76 @@ function toggleSidebar() {
     sidebar.classList.toggle('collapsed');
     if (main) main.classList.toggle('full-width');
   }
+}
+
+// ─── SWIPE GESTURE (mobile sidebar) ───────────────────────────
+function initSwipeGesture() {
+  var touchStartX = 0, touchStartY = 0;
+  document.addEventListener('touchstart', function(e) {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+  document.addEventListener('touchend', function(e) {
+    if (window.innerWidth > 768) return;
+    var dx = e.changedTouches[0].clientX - touchStartX;
+    var dy = e.changedTouches[0].clientY - touchStartY;
+    if (Math.abs(dx) < Math.abs(dy) || Math.abs(dx) < 40) return; // ignore vertical / short swipes
+    var sidebar = document.getElementById('sidebar');
+    var overlay = document.getElementById('sideOverlay');
+    if (dx > 0 && touchStartX < 40) {
+      // swipe right from left edge → open
+      if (sidebar && !sidebar.classList.contains('mobile-open')) {
+        sidebar.classList.add('mobile-open');
+        if (overlay) overlay.style.display = 'block';
+      }
+    } else if (dx < 0) {
+      // swipe left → close
+      if (sidebar && sidebar.classList.contains('mobile-open')) {
+        sidebar.classList.remove('mobile-open');
+        if (overlay) overlay.style.display = 'none';
+      }
+    }
+  }, { passive: true });
+}
+
+// ─── KEYBOARD SHORTCUTS (desktop/tablet) ──────────────────────
+function initKeyboardShortcuts() {
+  var pageMap = { '1':'dashboard','2':'dsr','3':'travel','4':'leads','5':'bookings','6':'reports','7':'incentives' };
+  document.addEventListener('keydown', function(e) {
+    // Ignore when typing in input/textarea/select
+    if (['INPUT','TEXTAREA','SELECT'].indexOf(e.target.tagName) !== -1) return;
+    // Ctrl+K  → focus global search
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      e.preventDefault();
+      var s = document.getElementById('globalSearch');
+      if (s) { s.focus(); s.select(); }
+      return;
+    }
+    // Ctrl+1..7 → navigate to page
+    if ((e.ctrlKey || e.metaKey) && pageMap[e.key]) {
+      e.preventDefault();
+      showPage(pageMap[e.key]);
+      return;
+    }
+    // Escape → close modal / user dropdown
+    if (e.key === 'Escape') {
+      closeModal();
+      closeUserMenu();
+    }
+    // \ → toggle sidebar icon-mode (desktop only)
+    if (e.key === '\\' && window.innerWidth > 768) {
+      toggleSidebarIconMode();
+    }
+  });
+}
+
+// ─── SIDEBAR ICON-COLLAPSE (desktop) ──────────────────────────
+function toggleSidebarIconMode() {
+  var sidebar  = document.getElementById('sidebar');
+  var main     = document.getElementById('mainContent');
+  if (!sidebar) return;
+  sidebar.classList.toggle('icon-mode');
+  if (main) main.classList.toggle('icon-mode-ml');
 }
 
 // ─── USER MENU ────────────────────────────────────────────────

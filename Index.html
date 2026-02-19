@@ -2,8 +2,18 @@
 <html lang="en" data-theme="light">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>SandalMist SM SalesBoard</title>
+
+<!-- PWA / Home Screen support -->
+<meta name="theme-color" content="#1565c0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SM SalesBoard">
+<meta name="application-name" content="SM SalesBoard">
+<meta name="msapplication-TileColor" content="#1565c0">
+<meta name="description" content="SandalMist Sales & Marketing Dashboard">
 <?!= include('CSS'); ?>
 </head>
 <body>
@@ -71,48 +81,48 @@
   <aside class="sidebar" id="sidebar">
     <nav class="sidebar-nav">
       <div class="nav-section-label">MAIN</div>
-      <a class="nav-item" data-page="dashboard" onclick="showPage('dashboard')">
+      <a class="nav-item" data-page="dashboard" data-label="Dashboard" onclick="showPage('dashboard')">
         <span class="nav-icon">📊</span>
         <span class="nav-label">Dashboard</span>
       </a>
 
       <div class="nav-section-label">SALES</div>
-      <a class="nav-item" data-page="dsr" onclick="showPage('dsr')">
+      <a class="nav-item" data-page="dsr" data-label="Daily Reports" onclick="showPage('dsr')">
         <span class="nav-icon">📝</span>
         <span class="nav-label">Daily Reports</span>
       </a>
-      <a class="nav-item" data-page="travel" onclick="showPage('travel')">
+      <a class="nav-item" data-page="travel" data-label="Travel Plans" onclick="showPage('travel')">
         <span class="nav-icon">✈️</span>
         <span class="nav-label">Travel Plans</span>
         <span class="nav-count" id="travelCount" style="display:none"></span>
       </a>
-      <a class="nav-item" data-page="leads" onclick="showPage('leads')">
+      <a class="nav-item" data-page="leads" data-label="Leads" onclick="showPage('leads')">
         <span class="nav-icon">🎯</span>
         <span class="nav-label">Leads</span>
       </a>
-      <a class="nav-item" data-page="bookings" onclick="showPage('bookings')">
+      <a class="nav-item" data-page="bookings" data-label="Bookings" onclick="showPage('bookings')">
         <span class="nav-icon">📅</span>
         <span class="nav-label">Bookings</span>
       </a>
 
       <div class="nav-section-label">ANALYTICS</div>
-      <a class="nav-item" data-page="reports" onclick="showPage('reports')">
+      <a class="nav-item" data-page="reports" data-label="Reports" onclick="showPage('reports')">
         <span class="nav-icon">📈</span>
         <span class="nav-label">Reports</span>
       </a>
-      <a class="nav-item" data-page="incentives" onclick="showPage('incentives')">
+      <a class="nav-item" data-page="incentives" data-label="Incentives" onclick="showPage('incentives')">
         <span class="nav-icon">💰</span>
         <span class="nav-label">Incentives</span>
       </a>
 
       <div class="nav-section-label" id="mgmtLabel" style="display:none">MANAGEMENT</div>
-      <a class="nav-item" data-page="admin" id="adminNavItem" style="display:none" onclick="showPage('admin')">
+      <a class="nav-item" data-page="admin" data-label="Admin Panel" id="adminNavItem" style="display:none" onclick="showPage('admin')">
         <span class="nav-icon">⚙️</span>
         <span class="nav-label">Admin Panel</span>
       </a>
 
       <div class="nav-section-label">ACCOUNT</div>
-      <a class="nav-item" data-page="profile" onclick="showPage('profile')">
+      <a class="nav-item" data-page="profile" data-label="My Profile" onclick="showPage('profile')">
         <span class="nav-icon">👤</span>
         <span class="nav-label">My Profile</span>
       </a>
@@ -137,6 +147,25 @@
     <div id="page-profile"   class="page"></div>
   </main>
 </div>
+
+<!-- MOBILE BOTTOM NAV (phones only) -->
+<nav class="mobile-bottom-nav" id="mobileBottomNav">
+  <a class="mbn-item active" data-page="dashboard" onclick="showPage('dashboard')">
+    <span class="mbn-icon">📊</span><span class="mbn-label">Home</span>
+  </a>
+  <a class="mbn-item" data-page="dsr" onclick="showPage('dsr')">
+    <span class="mbn-icon">📝</span><span class="mbn-label">Reports</span>
+  </a>
+  <a class="mbn-item" data-page="travel" onclick="showPage('travel')">
+    <span class="mbn-icon">✈️</span><span class="mbn-label">Travel</span>
+  </a>
+  <a class="mbn-item" data-page="leads" onclick="showPage('leads')">
+    <span class="mbn-icon">🎯</span><span class="mbn-label">Leads</span>
+  </a>
+  <a class="mbn-item" data-page="bookings" onclick="showPage('bookings')">
+    <span class="mbn-icon">📅</span><span class="mbn-label">Bookings</span>
+  </a>
+</nav>
 
 <!-- MODAL -->
 <div class="modal-overlay" id="modalOverlay" onclick="closeModal()"></div>
