@@ -355,8 +355,8 @@ function setButtonLoading(btn, loading) {
   }
 }
 
-function formatRM(n) {
-  return 'RM ' + (Number(n) || 0).toLocaleString('en-MY', {minimumFractionDigits:0, maximumFractionDigits:0});
+function formatINR(n) {
+  return '₹' + (Number(n) || 0).toLocaleString('en-IN', {minimumFractionDigits:0, maximumFractionDigits:0});
 }
 function formatDate(d) {
   if (!d || d === '' || d === 'undefined') return '-';
@@ -449,12 +449,12 @@ function renderDashboard(container) {
       '</div>' +
 
       '<div class="stats-grid">' +
-        statCard('blue',   '💰', formatRM(d.monthlyRevenue || 0), 'Monthly Revenue', 'This month') +
+        statCard('blue',   '💰', formatINR(d.monthlyRevenue || 0), 'Monthly Revenue', 'This month') +
         statCard('green',  '📅', d.confirmedBookings || 0,        'Confirmed Bookings', 'Total active') +
         statCard('orange', '🎯', d.totalLeads || 0,               'Total Leads', (d.wonLeads||0) + ' Won') +
         statCard('purple', '📊', (d.conversionRate || 0) + '%',   'Conversion Rate', (d.wonLeads||0)+'/'+( d.totalLeads||0)+' leads') +
         statCard('teal',   '📝', d.monthlyDSR || 0,               'DSR This Month', (d.totalDSR||0)+' total') +
-        statCard('red',    '💎', formatRM(d.totalIncentives || 0),'Incentives YTD', (d.thisYear||new Date().getFullYear())+'') +
+        statCard('red',    '💎', formatINR(d.totalIncentives || 0),'Incentives YTD', (d.thisYear||new Date().getFullYear())+'') +
       '</div>' +
 
       '<div class="grid-2 mb-24">' +
@@ -786,7 +786,7 @@ function renderTVRows(data) {
       '<td>' + formatDate(r.travelDate) + '</td>' +
       '<td>✈️ ' + r.city + '</td>' +
       '<td style="max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + r.purpose + '</td>' +
-      '<td><strong>' + formatRM(r.expectedRevenue) + '</strong></td>' +
+      '<td><strong>' + formatINR(r.expectedRevenue) + '</strong></td>' +
       '<td>' + (r.estimatedDays||1) + 'd</td>' +
       '<td>' + statusBadge(r.status) + '</td>' +
       '<td><div class="action-btns">' +
@@ -841,7 +841,7 @@ function openTravelForm() {
     '<div class="form-group"><label class="form-label">Purpose *</label>' +
       '<textarea class="form-control" id="t_purpose" rows="2" placeholder="Business purpose..."></textarea></div>' +
     '<div class="form-row">' +
-      formGroup('Expected Revenue (RM) *', 'number', 't_revenue', '0') +
+      formGroup('Expected Revenue (₹) *', 'number', 't_revenue', '0') +
       '<div class="form-group"><label class="form-label">Transport</label>' +
         '<select class="form-control" id="t_transport">' +
           '<option>Flight</option><option>Driving</option><option>Train</option><option>Bus</option>' +
@@ -902,7 +902,7 @@ function viewTravelItem(r) {
       ['Duration', (r.estimatedDays||1) + ' day(s)'],
       ['Clients', r.clients || '-', true],
       ['Purpose', r.purpose, true],
-      ['Expected Revenue', '<strong class="text-success">' + formatRM(r.expectedRevenue) + '</strong>'],
+      ['Expected Revenue', '<strong class="text-success">' + formatINR(r.expectedRevenue) + '</strong>'],
       ['Status', statusBadge(r.status)],
       ['Approved By', r.approvedBy || '-'],
       ['Notes', r.notes || '-', true]
@@ -988,7 +988,7 @@ function renderLeadRows(data) {
       '<td>' + formatDate(r.date) + '</td>' +
       '<td><strong>' + r.clientName + '</strong><div style="font-size:11px;color:var(--text-muted);">' + r.contactPerson + '</div></td>' +
       '<td>' + r.leadSource + '</td>' +
-      '<td>' + (r.budget ? formatRM(r.budget) : '-') + '</td>' +
+      '<td>' + (r.budget ? formatINR(r.budget) : '-') + '</td>' +
       '<td>' + r.assignedTo + '</td>' +
       '<td>' + statusBadge(r.status) + '</td>' +
       '<td><div class="action-btns">' +
@@ -1047,7 +1047,7 @@ function openLeadForm() {
         '</select></div>' +
     '</div>' +
     '<div class="form-row">' +
-      formGroup('Budget (RM)', 'number', 'l_budget', '0') +
+      formGroup('Budget (₹)', 'number', 'l_budget', '0') +
       '<div class="form-group"><label class="form-label">Status *</label>' +
         '<select class="form-control" id="l_status">' +
           '<option>New</option><option>Qualified</option><option>Proposal Sent</option><option>Won</option><option>Lost</option>' +
@@ -1116,7 +1116,7 @@ function viewLeadItem(r) {
       ['Email', r.email || '-'],
       ['Source', r.leadSource],
       ['Property Type', r.propertyType || '-'],
-      ['Budget', r.budget ? formatRM(r.budget) : '-'],
+      ['Budget', r.budget ? formatINR(r.budget) : '-'],
       ['Assigned To', r.assignedTo],
       ['Status', statusBadge(r.status)],
       ['Follow-up', formatDate(r.followUpDate) || '-'],
@@ -1209,12 +1209,12 @@ function renderBkRows(data) {
       '<td>' + formatDate(r.checkIn) + '</td>' +
       '<td>' + formatDate(r.checkOut) + '</td>' +
       '<td>' + (r.nights||0) + '</td>' +
-      '<td><strong class="text-success">' + formatRM(r.totalValue) + '</strong></td>' +
+      '<td><strong class="text-success">' + formatINR(r.totalValue) + '</strong></td>' +
       '<td>' + r.salesRep + '</td>' +
       '<td>' + statusBadge(r.status) + '</td></tr>';
   }).join('');
   rows += '<tr class="summary-row"><td colspan="7"><strong>TOTAL</strong></td>' +
-    '<td colspan="3"><strong>' + formatRM(total) + '</strong></td></tr>';
+    '<td colspan="3"><strong>' + formatINR(total) + '</strong></td></tr>';
   var cols = [
     { label:'ID', key:'id' },               { label:'Date', key:'bookingDate' },
     { label:'Client', key:'clientName' },    { label:'Property', key:'propertyName' },
@@ -1259,10 +1259,10 @@ function openBookingForm() {
       formGroup('Check-Out *', 'date', 'b_out', '', '', false, 'onchange="bkCalc()"') +
     '</div>' +
     '<div class="form-row">' +
-      formGroup('Rate/Night (RM)', 'number', 'b_rate', '0', '', false, 'onchange="bkCalc()"') +
+      formGroup('Rate/Night (₹)', 'number', 'b_rate', '0', '', false, 'onchange="bkCalc()"') +
       formGroup('Nights', 'number', 'b_nights', '0', '', false, 'readonly') +
     '</div>' +
-    formGroup('Total Value (RM) *', 'number', 'b_total', '0') +
+    formGroup('Total Value (₹) *', 'number', 'b_total', '0') +
     '<div class="form-row">' +
       '<div class="form-group"><label class="form-label">Status</label>' +
         '<select class="form-control" id="b_status">' +
@@ -1353,18 +1353,18 @@ function loadMonthlyReport() {
       return '<tr>' +
         '<td>' + (medals[i]||'#'+(i+1)) + '</td>' +
         '<td><strong>' + r.rep + '</strong></td>' +
-        '<td class="text-success font-bold">' + formatRM(r.revenue) + '</td>' +
+        '<td class="text-success font-bold">' + formatINR(r.revenue) + '</td>' +
         '<td>' + r.bookings + '</td>' +
         '<td>' + r.newLeads + '</td>' +
         '<td>' + r.wonLeads + '</td>' +
         '<td>' + r.conversionRate + '%</td>' +
         '<td>' + r.dsrCount + '</td>' +
-        '<td>' + (inc > 0 ? '<span class="text-success">' + formatRM(inc) + '</span>' : '<span class="text-muted">-</span>') + '</td>' +
+        '<td>' + (inc > 0 ? '<span class="text-success">' + formatINR(inc) + '</span>' : '<span class="text-muted">-</span>') + '</td>' +
       '</tr>';
     }).join('');
     c.innerHTML =
       '<div class="stats-grid mb-24">' +
-        statCard('blue','💰',formatRM(totals.rev),'Total Revenue','All bookings') +
+        statCard('blue','💰',formatINR(totals.rev),'Total Revenue','All bookings') +
         statCard('green','📅',totals.bk,'Total Bookings','This period') +
         statCard('orange','🎯',totals.wl+'/'+totals.nl,'Won/New Leads','This period') +
       '</div>' +
@@ -1375,12 +1375,12 @@ function loadMonthlyReport() {
       '</tr></thead><tbody>' + rows +
       '<tr class="summary-row">' +
         '<td colspan="2"><strong>TOTAL</strong></td>' +
-        '<td><strong>' + formatRM(totals.rev) + '</strong></td>' +
+        '<td><strong>' + formatINR(totals.rev) + '</strong></td>' +
         '<td><strong>' + totals.bk + '</strong></td>' +
         '<td><strong>' + totals.nl + '</strong></td>' +
         '<td><strong>' + totals.wl + '</strong></td>' +
         '<td></td><td><strong>' + totals.d + '</strong></td>' +
-        '<td><strong>' + formatRM(res.data.reduce(function(s,r){return s+Math.max(0,r.revenue-500000)*0.01;},0)) + '</strong></td>' +
+        '<td><strong>' + formatINR(res.data.reduce(function(s,r){return s+Math.max(0,r.revenue-500000)*0.01;},0)) + '</strong></td>' +
       '</tr>' +
       '</tbody></table></div></div></div>';
   }).catch(function(err) {
@@ -1416,7 +1416,7 @@ function renderIncentivesPage(container) {
     '<div class="card mb-24"><div class="card-body">' +
       '<div style="display:flex;flex-wrap:wrap;gap:24px;align-items:center;">' +
         '<div><div style="font-size:11px;color:var(--text-muted);">TIER 1</div>' +
-          '<div style="font-size:18px;font-weight:700;">0 – RM500k</div>' +
+          '<div style="font-size:18px;font-weight:700;">0 – ₹500k</div>' +
           '<div style="font-size:12px;color:var(--text-muted);">0% (no incentive)</div></div>' +
         '<div><div style="font-size:11px;color:var(--text-muted);">TIER 2</div>' +
           '<div style="font-size:18px;font-weight:700;color:var(--success);">500k – 1M</div>' +
@@ -1425,10 +1425,10 @@ function renderIncentivesPage(container) {
           '<div style="font-size:18px;font-weight:700;color:var(--primary);">Above 1M</div>' +
           '<div style="font-size:12px;color:var(--text-muted);">1.5% on portion</div></div>' +
         '<div style="border-left:2px solid var(--border);padding-left:20px;">' +
-          '<div style="font-size:11px;color:var(--text-muted);">EXAMPLE (RM 1.2M)</div>' +
+          '<div style="font-size:11px;color:var(--text-muted);">EXAMPLE (₹1.2M)</div>' +
           '<div style="font-size:12px;color:var(--text-sub);">' +
             '500k×0% + 500k×1% + 200k×1.5% = ' +
-            '<strong style="color:var(--success);">RM 8,000</strong></div></div>' +
+            '<strong style="color:var(--success);">₹8,000</strong></div></div>' +
       '</div></div></div>' +
     '<div class="filters-bar">' +
       '<select class="filter-select" id="incYear" onchange="loadIncentives()">' + yearOptions() + '</select>' +
@@ -1459,16 +1459,16 @@ function loadIncentives() {
         '<td class="font-mono text-primary">' + r.id + '</td>' +
         '<td><strong>' + r.salesRep + '</strong></td>' +
         '<td>' + r.month + ' ' + r.year + '</td>' +
-        '<td>' + formatRM(r.totalSales) + '</td>' +
-        '<td>' + (r.eligibleAmount > 0 ? formatRM(r.eligibleAmount) : '<span class="text-muted">—</span>') + '</td>' +
+        '<td>' + formatINR(r.totalSales) + '</td>' +
+        '<td>' + (r.eligibleAmount > 0 ? formatINR(r.eligibleAmount) : '<span class="text-muted">—</span>') + '</td>' +
         '<td>' + ((r.incentiveRate||0.01)*100).toFixed(1) + '%</td>' +
         '<td class="' + (r.incentiveAmount > 0 ? 'text-success font-bold' : 'text-muted') + '">' +
-          (r.incentiveAmount > 0 ? formatRM(r.incentiveAmount) : '—') + '</td>' +
+          (r.incentiveAmount > 0 ? formatINR(r.incentiveAmount) : '—') + '</td>' +
         '<td>' + statusBadge(r.status) + '</td>' +
       '</tr>';
     }).join('');
     rows += '<tr class="summary-row"><td colspan="6"><strong>TOTAL INCENTIVES</strong></td>' +
-      '<td colspan="2"><strong>' + formatRM(total) + '</strong></td></tr>';
+      '<td colspan="2"><strong>' + formatINR(total) + '</strong></td></tr>';
     tbl.innerHTML = '<div class="table-container"><table class="data-table"><thead><tr>' +
       '<th>ID</th><th>Sales Rep</th><th>Period</th><th>Total Sales</th>' +
       '<th>Eligible</th><th>Rate</th><th>Incentive</th><th>Status</th>' +
@@ -1490,9 +1490,9 @@ function openCalcModal() {
     '</div>' +
     '<div style="background:var(--primary-light);border-radius:8px;padding:12px;margin-top:8px;font-size:13px;">' +
       '<strong>Multi-tier Formula:</strong><br>' +
-      '• 0 – RM500,000 → 0%<br>' +
-      '• RM500,001 – RM1,000,000 → 1% on that portion<br>' +
-      '• Above RM1,000,000 → 1.5% on that portion' +
+      '• 0 – ₹5,00,000 → 0%<br>' +
+      '• ₹5,00,001 – ₹10,00,000 → 1% on that portion<br>' +
+      '• Above ₹10,00,000 → 1.5% on that portion' +
     '</div>',
     '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>' +
     '<button class="btn btn-primary" id="calcBtn" onclick="runIncentiveCalc()">🧮 Calculate</button>'
@@ -1770,7 +1770,7 @@ function loadTierConfig() {
           '<div id="tierRows"></div>' +
           '<div style="background:var(--primary-light);border-radius:8px;padding:14px;margin-top:16px;font-size:13px;">' +
             '<strong>💡 Example:</strong> If Tier 1 is 0–500k@0%, Tier 2 is 500k–1M@1%, Tier 3 is 1M+@1.5%,<br>' +
-            'then RM 1.2M sales = (0×500k) + (0.01×500k) + (0.015×200k) = <strong>RM 8,000</strong>' +
+            'then ₹1.2M sales = (0×500k) + (0.01×500k) + (0.015×200k) = <strong>₹8,000</strong>' +
           '</div>' +
         '</div>' +
       '</div>';
@@ -1788,8 +1788,8 @@ function renderTierRows(tiers) {
       '<thead><tr>' +
         '<th style="width:40px;">#</th>' +
         '<th>Label</th>' +
-        '<th>From (RM)</th>' +
-        '<th>To (RM) — leave blank for unlimited</th>' +
+        '<th>From (₹)</th>' +
+        '<th>To (₹) — leave blank for unlimited</th>' +
         '<th>Rate (%)</th>' +
         '<th style="width:60px;"></th>' +
       '</tr></thead>' +
@@ -1925,7 +1925,7 @@ function showHelp() {
       '<p><strong>✈️ Travel Plans:</strong> Submit travel plans for HR/Admin approval. You will receive an email with the decision.</p><br>' +
       '<p><strong>🎯 Leads:</strong> Track clients from first contact to booking conversion. Update status as leads progress.</p><br>' +
       '<p><strong>📅 Bookings:</strong> Record confirmed property bookings. Revenue is tracked automatically.</p><br>' +
-      '<p><strong>💰 Incentives:</strong> Monthly incentive = (Total Sales − RM500,000) × 1%. Requires sales over RM500k to be eligible.</p>' +
+      '<p><strong>💰 Incentives:</strong> Monthly incentive = (Total Sales − ₹5,00,000) × 1%. Requires sales over ₹500k to be eligible.</p>' +
     '</div>',
     '<button class="btn btn-ghost" onclick="closeModal()">Close</button>'
   );
