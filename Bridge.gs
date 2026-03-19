@@ -124,6 +124,32 @@ function handleClientRequest(action, dataJson) {
       case 'generateBookingsPDF':
         return generateBookingsPDF(data, user);
 
+      // ── Proposals / Calculator ───────────────────────────
+      case 'getProposals':
+        return getProposals(user, data);
+      case 'createProposal':
+        return createProposal(data, user);
+      case 'updateProposal':
+        return updateProposal(data, user);
+      case 'approveProposal':
+        return approveProposal(data, user);
+      case 'rejectProposal':
+        return rejectProposal(data, user);
+      case 'sendProposalToClient':
+        return sendProposalToClient(data, user);
+      case 'deleteProposal':
+        return deleteProposal(data, user);
+      case 'calculateProposalNumbers':
+        return calculateProposalNumbers(data);
+      case 'getCOGSRates':
+        return getCOGSRates(user);
+      case 'updateCOGSRate':
+        return updateCOGSRate(data, user);
+      case 'generateCustomerProposalPDF':
+        return generateCustomerProposalPDF(data, user);
+      case 'generateInternalProposalPDF':
+        return generateInternalProposalPDF(data, user);
+
       default:
         return { success: false, error: 'Unknown action: ' + action };
     }

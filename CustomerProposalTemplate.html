@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Proposal – <?= proposal.id ?></title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Segoe UI',Arial,sans-serif;background:#f4f6fb;color:#1a237e;font-size:13px}
+  .page{max-width:820px;margin:0 auto;background:#fff;padding:0 0 40px}
+
+  /* ─ Header ─ */
+  .header{background:linear-gradient(135deg,#1565c0 0%,#0d47a1 60%,#283593 100%);padding:32px 40px 24px;color:#fff;position:relative;overflow:hidden}
+  .header::after{content:'';position:absolute;right:-40px;top:-40px;width:200px;height:200px;background:rgba(255,255,255,.06);border-radius:50%}
+  .header-top{display:flex;justify-content:space-between;align-items:flex-start;gap:20px}
+  .brand-logo{height:44px;background:rgba(255,255,255,.15);border-radius:8px;padding:6px 14px}
+  .proposal-label{text-align:right}
+  .proposal-label .tag{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;opacity:.75;margin-bottom:4px}
+  .proposal-label .pid{font-size:20px;font-weight:800;letter-spacing:.5px}
+  .proposal-label .pdate{font-size:12px;opacity:.7;margin-top:2px}
+
+  .tagline{margin-top:18px;font-size:14px;opacity:.8;font-style:italic}
+
+  /* ─ To ─ */
+  .to-section{padding:24px 40px 0}
+  .to-section h3{font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#90a4ae;margin-bottom:8px}
+  .client-name{font-size:18px;font-weight:700;color:#0d47a1}
+  .client-detail{font-size:13px;color:#546e7a;margin-top:3px}
+
+  /* ─ Summary Table ─ */
+  .section{padding:24px 40px 0}
+  .section-title{font-size:11px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#1565c0;border-bottom:2px solid #e3eaf6;padding-bottom:6px;margin-bottom:14px}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:9px 12px;text-align:left;font-size:13px}
+  th{background:#e8eef8;color:#1a237e;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.6px}
+  tr:nth-child(even) td{background:#f7f9fd}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  td.label{color:#546e7a}
+
+  /* ─ Pricing highlight ─ */
+  .pricing-box{background:#e8f5e9;border:2px solid #66bb6a;border-radius:10px;padding:20px 28px;margin:24px 40px 0;display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}
+  .pricing-box .item{}
+  .pricing-box .item .lbl{font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#388e3c;margin-bottom:3px}
+  .pricing-box .item .val{font-size:22px;font-weight:800;color:#1b5e20}
+  .pricing-box .item .sub{font-size:11px;color:#66bb6a;margin-top:2px}
+  .pricing-box .item.highlight .val{font-size:28px;color:#2e7d32}
+
+  /* ─ Discount badge ─ */
+  .disc-badge{display:inline-block;background:#fff3e0;color:#e65100;border:1px solid #ffcc80;border-radius:20px;padding:3px 12px;font-size:11px;font-weight:700;margin-left:8px;vertical-align:middle}
+  .disc-badge.none{display:none}
+
+  /* ─ Terms ─ */
+  .terms{padding:20px 40px 0}
+  .terms p{color:#607d8b;font-size:12px;line-height:1.7;margin-bottom:4px}
+
+  /* ─ Footer ─ */
+  .footer{margin:28px 40px 0;padding:16px 20px;background:#f0f4fb;border-radius:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+  .footer .contact{font-size:12px;color:#546e7a}
+  .footer .contact strong{color:#1565c0}
+  .validity{font-size:11px;color:#90a4ae;text-align:right}
+
+  /* ─ Signature ─ */
+  .sig-section{padding:24px 40px 0;display:flex;justify-content:space-between;gap:40px;flex-wrap:wrap}
+  .sig-box{flex:1;min-width:180px}
+  .sig-line{border-top:1.5px solid #bbb;margin-top:40px;padding-top:6px;font-size:12px;color:#888}
+
+  @media print{body{background:#fff}.header{-webkit-print-color-adjust:exact;print-color-adjust:exact}.pricing-box{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-top">
+      <img src="https://sandalmistresort.com/wp-content/uploads/2024/09/logo-white.png"
+           alt="SandalMist" class="brand-logo">
+      <div class="proposal-label">
+        <div class="tag">Sales Proposal</div>
+        <div class="pid"><?= proposal.id ?></div>
+        <div class="pdate">Date: <?= proposal.proposalDate ?></div>
+      </div>
+    </div>
+    <div class="tagline">Crafted exclusively for you — where luxury meets value.</div>
+  </div>
+
+  <!-- To -->
+  <div class="to-section">
+    <h3>Prepared For</h3>
+    <div class="client-name"><?= proposal.clientName ?></div>
+    <? if(proposal.clientEmail){ ?><div class="client-detail">✉ <?= proposal.clientEmail ?></div><? } ?>
+    <? if(proposal.clientPhone){ ?><div class="client-detail">📞 <?= proposal.clientPhone ?></div><? } ?>
+  </div>
+
+  <!-- Stay Details -->
+  <div class="section">
+    <div class="section-title">Stay Details</div>
+    <table>
+      <tr><th>Property</th><th>Room Type</th><th>Check-In</th><th>Check-Out</th><th>Nights</th></tr>
+      <tr>
+        <td><?= proposal.propertyName ?></td>
+        <td><?= proposal.roomType ?></td>
+        <td><?= proposal.checkIn ?></td>
+        <td><?= proposal.checkOut ?></td>
+        <td class="num"><?= proposal.nights ?></td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- Pricing -->
+  <div class="pricing-box">
+    <div class="item">
+      <div class="lbl">Rate per Night</div>
+      <div class="val">₹<?= Number(proposal.baseRate).toLocaleString('en-IN') ?></div>
+      <? if(proposal.discountPct > 0){ ?>
+      <div class="sub">Discount applied: <?= proposal.discountPct ?>%</div>
+      <? } ?>
+    </div>
+    <? if(proposal.discountPct > 0){ ?>
+    <div class="item">
+      <div class="lbl">Discounted Rate / Night</div>
+      <div class="val">₹<?= Number(proposal.finalRate).toLocaleString('en-IN') ?></div>
+      <div class="sub">Savings: ₹<?= Number(proposal.baseRate - proposal.finalRate).toLocaleString('en-IN') ?>/night</div>
+    </div>
+    <? } ?>
+    <div class="item highlight">
+      <div class="lbl">Total Package Value</div>
+      <div class="val">₹<?= Number(proposal.totalValue).toLocaleString('en-IN') ?></div>
+      <div class="sub">for <?= proposal.nights ?> night(s)</div>
+    </div>
+  </div>
+
+  <!-- Pricing Table -->
+  <div class="section">
+    <div class="section-title">Pricing Breakdown</div>
+    <table>
+      <tr><th>Description</th><th style="text-align:right">Amount (₹)</th></tr>
+      <tr><td><?= proposal.roomType ?> — <?= proposal.nights ?> Night(s) @ ₹<?= Number(proposal.baseRate).toLocaleString('en-IN') ?></td>
+          <td class="num">₹<?= Number(proposal.baseRate * proposal.nights).toLocaleString('en-IN') ?></td></tr>
+      <? if(proposal.discountPct > 0){ ?>
+      <tr><td class="label">Exclusive Discount (<?= proposal.discountPct ?>%)</td>
+          <td class="num" style="color:#c62828">– ₹<?= Number((proposal.baseRate - proposal.finalRate) * proposal.nights).toLocaleString('en-IN') ?></td></tr>
+      <? } ?>
+      <tr style="font-weight:700;background:#e8f5e9">
+        <td>Total Amount Payable</td>
+        <td class="num" style="color:#2e7d32">₹<?= Number(proposal.totalValue).toLocaleString('en-IN') ?></td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- Notes / Special Requests -->
+  <? if(proposal.notes){ ?>
+  <div class="section">
+    <div class="section-title">Special Notes</div>
+    <p style="color:#546e7a;line-height:1.7"><?= proposal.notes ?></p>
+  </div>
+  <? } ?>
+
+  <!-- Terms -->
+  <div class="terms">
+    <div class="section-title" style="padding:0 0 6px;margin-bottom:10px">Terms & Conditions</div>
+    <p>1. This proposal is valid for <strong>14 days</strong> from the date of issue.</p>
+    <p>2. A deposit of <strong>30%</strong> of the total amount is required to confirm the booking.</p>
+    <p>3. Cancellation within 7 days of check-in date will incur a <strong>50% cancellation fee</strong>.</p>
+    <p>4. All rates are inclusive of applicable taxes unless otherwise stated.</p>
+    <p>5. Check-in time: 2:00 PM | Check-out time: 12:00 PM.</p>
+  </div>
+
+  <!-- Signature -->
+  <div class="sig-section">
+    <div class="sig-box">
+      <div class="sig-line">Prepared by: <?= proposal.createdBy ?><br>SandalMist Resort</div>
+    </div>
+    <div class="sig-box">
+      <div class="sig-line">Client Signature: ____________________<br><?= proposal.clientName ?></div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="contact">
+      <strong>SandalMist Resort</strong><br>
+      sandalmistresort.com &nbsp;|&nbsp; reservations@sandalmist.com
+    </div>
+    <div class="validity">Ref: <?= proposal.id ?><br>Valid 14 days from <?= proposal.proposalDate ?></div>
+  </div>
+
+</div>
+</body>
+</html>

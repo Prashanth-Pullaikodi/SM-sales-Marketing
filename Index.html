@@ -116,6 +116,10 @@
       </a>
 
       <div class="nav-section-label" id="mgmtLabel" style="display:none">MANAGEMENT</div>
+      <a class="nav-item" data-page="calculator" data-label="Proposal Calculator" id="calculatorNavItem" style="display:none" onclick="showPage('calculator')">
+        <span class="nav-icon">🧮</span>
+        <span class="nav-label">Proposal Calculator</span>
+      </a>
       <a class="nav-item" data-page="admin" data-label="Admin Panel" id="adminNavItem" style="display:none" onclick="showPage('admin')">
         <span class="nav-icon">⚙️</span>
         <span class="nav-label">Admin Panel</span>
@@ -142,9 +146,10 @@
     <div id="page-leads"     class="page"></div>
     <div id="page-bookings"  class="page"></div>
     <div id="page-reports"   class="page"></div>
-    <div id="page-incentives"class="page"></div>
-    <div id="page-admin"     class="page"></div>
-    <div id="page-profile"   class="page"></div>
+    <div id="page-incentives"  class="page"></div>
+    <div id="page-calculator"  class="page"></div>
+    <div id="page-admin"       class="page"></div>
+    <div id="page-profile"     class="page"></div>
   </main>
 </div>
 
@@ -164,6 +169,9 @@
   </a>
   <a class="mbn-item" data-page="bookings" onclick="showPage('bookings')">
     <span class="mbn-icon">📅</span><span class="mbn-label">Bookings</span>
+  </a>
+  <a class="mbn-item" data-page="calculator" id="mbnCalculator" style="display:none" onclick="showPage('calculator')">
+    <span class="mbn-icon">🧮</span><span class="mbn-label">Proposals</span>
   </a>
 </nav>
 
@@ -190,6 +198,7 @@ var CURRENT_USER = {
 
 <?!= include('TableEnhancer'); ?>
 <?!= include('JS'); ?>
+<?!= include('ProposalJS'); ?>
 
 </body>
 </html>

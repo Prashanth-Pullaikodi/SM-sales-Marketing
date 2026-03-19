@@ -1,0 +1,566 @@
+<script>
+/* ============================================================
+   ProposalJS.html — Proposal Calculator & Dashboard
+   Page: calculator  |  Roles: Admin, Exec (view all + approve)
+                               Sales (own proposals)
+                               HR    (read-only)
+   ============================================================ */
+
+// ─── STATE ────────────────────────────────────────────────────
+var _proposals     = [];
+var _cogsRates     = [];
+var _propPage      = 0;
+var _propPageSize  = 15;
+var _propFilter    = 'all';
+var _editRowIndex  = null;   // null = new, number = edit existing
+
+// ─── LOAD PAGE ───────────────────────────────────────────────
+
+function loadCalculatorPage() {
+  var role = CURRENT_USER.role;
+  var html =
+    '<div class="page-header">' +
+      '<div>' +
+        '<h1 class="page-title">Proposal Calculator</h1>' +
+        '<p class="page-subtitle">Build, price and manage client proposals with live COGS analysis</p>' +
+      '</div>' +
+      '<div class="page-actions">' +
+        (role !== 'HR' ?
+          '<button class="btn btn-primary" onclick="openProposalForm(null)">+ New Proposal</button>' : '') +
+        (role === 'Admin' || role === 'Exec' ?
+          '<button class="btn btn-ghost" onclick="loadCOGSSettings()" style="margin-left:8px">⚙ COGS Rates</button>' : '') +
+      '</div>' +
+    '</div>' +
+
+    // ── KPI strip ──
+    '<div id="propKpiStrip" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px"></div>' +
+
+    // ── Filter bar ──
+    '<div class="filter-bar" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">' +
+      _propFilterBtn('all',     'All') +
+      _propFilterBtn('Draft',   'Draft') +
+      _propFilterBtn('Pending Approval', 'Pending') +
+      _propFilterBtn('Approved','Approved') +
+      _propFilterBtn('Sent to Client','Sent') +
+      _propFilterBtn('Client Accepted','Accepted') +
+    '</div>' +
+
+    // ── Table ──
+    '<div class="table-responsive">' +
+      '<table class="data-table" id="propTable">' +
+        '<thead><tr>' +
+          '<th>ID</th><th>Date</th><th>Client</th><th>Room Type</th>' +
+          '<th>Nights</th><th>Total Value</th><th>Discount</th>' +
+          (role === 'Admin' || role === 'Exec' ? '<th>Margin %</th>' : '') +
+          '<th>Status</th><th>Actions</th>' +
+        '</tr></thead>' +
+        '<tbody id="propTbody"><tr><td colspan="10" style="text-align:center;padding:32px;color:var(--text-muted)">Loading...</td></tr></tbody>' +
+      '</table>' +
+    '</div>' +
+    '<div id="propPagination"></div>';
+
+  setEl('page-calculator', html);
+  _loadProposals();
+}
+
+function _propFilterBtn(status, label) {
+  var active = _propFilter === status ? 'btn-primary' : 'btn-ghost';
+  return '<button class="btn btn-sm ' + active + '" onclick="_setPropFilter(\'' + status + '\')">' + label + '</button>';
+}
+
+function _setPropFilter(status) {
+  _propFilter = status;
+  _propPage   = 0;
+  loadCalculatorPage();
+}
+
+// ─── LOAD PROPOSALS FROM SERVER ──────────────────────────────
+
+function _loadProposals() {
+  api('getProposals', { status: _propFilter }).then(function(res) {
+    _proposals = res.data || [];
+    _renderKPIs();
+    _renderProposalTable();
+  }).catch(function(err) {
+    setEl('propTbody', '<tr><td colspan="10" style="text-align:center;color:#c62828;padding:24px">' + err.message + '</td></tr>');
+  });
+}
+
+function _renderKPIs() {
+  var all        = _proposals;
+  var total      = all.length;
+  var totalVal   = all.reduce(function(s,p){ return s + (Number(p.TotalValue)||0); }, 0);
+  var pending    = all.filter(function(p){ return p.Status === 'Pending Approval'; }).length;
+  var approved   = all.filter(function(p){ return p.Status === 'Approved' || p.Status === 'Sent to Client'; }).length;
+  var avgMargin  = total ? (all.reduce(function(s,p){ return s + (Number(p.MarginPct)||0); }, 0) / total) : 0;
+
+  var kpis = [
+    { label: 'Total Proposals', val: total,                     sub: 'all time',       color: '#1565c0' },
+    { label: 'Pipeline Value',  val: '₹' + _fmtINR(totalVal),  sub: 'total value',    color: '#2e7d32' },
+    { label: 'Pending Approval',val: pending,                   sub: 'need action',    color: '#e65100' },
+    { label: 'Avg Margin',      val: avgMargin.toFixed(1) + '%',sub: 'across all',     color: avgMargin >= 35 ? '#2e7d32' : '#e65100' }
+  ];
+
+  var html = kpis.map(function(k) {
+    return '<div class="stat-card" style="border-left:3px solid ' + k.color + '">' +
+      '<div class="stat-value" style="color:' + k.color + '">' + k.val + '</div>' +
+      '<div class="stat-label">' + k.label + '</div>' +
+      '<div class="stat-sub">' + k.sub + '</div>' +
+    '</div>';
+  }).join('');
+  setEl('propKpiStrip', html);
+}
+
+function _renderProposalTable() {
+  var role   = CURRENT_USER.role;
+  var all    = _proposals;
+  var start  = _propPage * _propPageSize;
+  var page   = all.slice(start, start + _propPageSize);
+
+  if (!all.length) {
+    setEl('propTbody', '<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--text-muted)">No proposals found</td></tr>');
+    setEl('propPagination', '');
+    return;
+  }
+
+  var rows = page.map(function(p) {
+    var statusCls = _propStatusCls(p.Status);
+    var discColor = Number(p.DiscountPct) > 15 ? 'color:#c62828;font-weight:700' :
+                    (Number(p.DiscountPct) > 5  ? 'color:#e65100;font-weight:600' : '');
+    var marginCol = (role === 'Admin' || role === 'Exec') ?
+      '<td style="' + (Number(p.MarginPct) < 35 ? 'color:#e65100;font-weight:600' : 'color:#2e7d32') + '">' +
+        Number(p.MarginPct).toFixed(1) + '%</td>' : '';
+
+    var actions = _propActions(p, role);
+
+    return '<tr>' +
+      '<td><span style="font-family:monospace;font-size:11px">' + p.ID + '</span></td>' +
+      '<td>' + (p.ProposalDate || '—') + '</td>' +
+      '<td><strong>' + (p.ClientName || '—') + '</strong><br>' +
+        '<span style="font-size:11px;color:var(--text-muted)">' + (p.ClientEmail || '') + '</span></td>' +
+      '<td>' + (p.RoomType || '—') + '</td>' +
+      '<td style="text-align:center">' + (p.Nights || 1) + '</td>' +
+      '<td style="font-weight:700">₹' + _fmtINR(p.TotalValue) + '</td>' +
+      '<td style="' + discColor + '">' + (p.DiscountPct > 0 ? p.DiscountPct + '%' : '—') + '</td>' +
+      marginCol +
+      '<td><span class="status-badge ' + statusCls + '">' + (p.Status || '—') + '</span></td>' +
+      '<td style="white-space:nowrap">' + actions + '</td>' +
+    '</tr>';
+  }).join('');
+
+  setEl('propTbody', rows);
+
+  // Pagination
+  var totalPages = Math.ceil(all.length / _propPageSize);
+  if (totalPages > 1) {
+    setEl('propPagination', buildPagination(_propPage, all.length, _propPageSize, '_loadPropPage'));
+  } else {
+    setEl('propPagination', '');
+  }
+}
+
+function _loadPropPage(p) { _propPage = p; _renderProposalTable(); }
+
+function _propActions(p, role) {
+  var btns = '';
+  var ri   = 'data-ri="' + p.rowIndex + '"';
+
+  // Edit — Draft/Pending only, own or Admin/Exec
+  if ((p.Status === 'Draft' || p.Status === 'Pending Approval') &&
+      (role === 'Admin' || role === 'Exec' || p.CreatedEmail === CURRENT_USER.email)) {
+    btns += '<button class="btn btn-ghost btn-sm" ' + ri + ' onclick="openProposalForm(' + p.rowIndex + ')">✏</button> ';
+  }
+
+  // Approve/Reject — Pending + Admin/Exec
+  if (p.Status === 'Pending Approval' && (role === 'Admin' || role === 'Exec')) {
+    btns += '<button class="btn btn-success btn-sm" ' + ri + ' onclick="doApproveProposal(' + p.rowIndex + ')">✓ Approve</button> ';
+    btns += '<button class="btn btn-danger btn-sm" ' + ri + ' onclick="doRejectProposal(' + p.rowIndex + ')">✗ Reject</button> ';
+  }
+
+  // Send to client — Approved + not HR
+  if (p.Status === 'Approved' && role !== 'HR') {
+    btns += '<button class="btn btn-primary btn-sm" ' + ri + ' onclick="doSendProposal(' + p.rowIndex + ')">Send</button> ';
+  }
+
+  // Customer PDF
+  if (p.Status !== 'Draft' && role !== 'HR') {
+    btns += '<button class="btn btn-ghost btn-sm" ' + ri + ' title="Customer PDF" onclick="genCustomerPDF(' + p.rowIndex + ')">📄</button> ';
+  }
+
+  // Internal PDF — Admin/Exec only
+  if (role === 'Admin' || role === 'Exec') {
+    btns += '<button class="btn btn-ghost btn-sm" ' + ri + ' title="Internal PDF" onclick="genInternalPDF(' + p.rowIndex + ')">📊</button> ';
+  }
+
+  // Delete — Admin only
+  if (role === 'Admin') {
+    btns += '<button class="btn btn-danger btn-sm" ' + ri + ' onclick="doDeleteProposal(' + p.rowIndex + ', \'' + p.ID + '\')">🗑</button>';
+  }
+
+  return btns || '—';
+}
+
+function _propStatusCls(status) {
+  var map = {
+    'Draft':           'status-pending',
+    'Pending Approval':'status-pending',
+    'Approved':        'status-approved',
+    'Rejected':        'status-rejected',
+    'Sent to Client':  'status-active',
+    'Client Accepted': 'status-approved',
+    'Client Declined': 'status-rejected'
+  };
+  return map[status] || 'status-pending';
+}
+
+// ─── PROPOSAL FORM (calculator UI) ───────────────────────────
+
+function openProposalForm(rowIndex) {
+  _editRowIndex = rowIndex;
+  var isEdit    = rowIndex !== null;
+  var existing  = null;
+  if (isEdit) {
+    existing = _proposals.find(function(p){ return p.rowIndex === rowIndex; });
+  }
+  var v = existing || {};
+
+  // Build room type options from COGS rates (or defaults)
+  var roomTypes = _cogsRates.length ?
+    _cogsRates.map(function(c){ return c.RoomType; }) :
+    ['Deluxe Room','Superior Room','Executive Suite','Presidential Suite','Family Room','Villa'];
+
+  var opts = roomTypes.map(function(r) {
+    var sel = v.RoomType === r ? 'selected' : '';
+    return '<option value="' + r + '" ' + sel + '>' + r + '</option>';
+  }).join('');
+
+  var html =
+    '<form id="proposalForm" onsubmit="return false" style="display:grid;gap:14px">' +
+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
+      _field('text',   'clientName',   'Client / Company Name', v.ClientName   || '', true) +
+      _field('email',  'clientEmail',  'Client Email',          v.ClientEmail  || '', false) +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
+      _field('text',   'clientPhone',  'Client Phone',          v.ClientPhone  || '', false) +
+      _field('text',   'propertyName', 'Property Name',         v.PropertyName || 'SandalMist Resort', false) +
+    '</div>' +
+
+    '<div class="form-group">' +
+      '<label class="form-label">Room Type <span style="color:#c62828">*</span></label>' +
+      '<select class="form-control" id="f_roomType" onchange="onRoomTypeChange()" required>' +
+        '<option value="">— Select —</option>' + opts +
+      '</select>' +
+    '</div>' +
+
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">' +
+      _field('date',   'checkIn',    'Check-In Date',  v.CheckIn   || '', true, 'onDateChange()') +
+      _field('date',   'checkOut',   'Check-Out Date', v.CheckOut  || '', true, 'onDateChange()') +
+      _field('number', 'nights',     'Nights',         v.Nights    || '', true,  'onNightsChange()', '1', '999') +
+    '</div>' +
+
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">' +
+      _field('number', 'baseRatePerNight', 'Base Rate / Night (₹)', v.BaseRatePerNight || '', true, 'liveCalc()') +
+      _field('number', 'discountPct',      'Discount %',            v.DiscountPct      || '0', false, 'liveCalc()', '0', '100') +
+      _field('text',   'discountReason',   'Discount Reason',       v.DiscountReason   || '', false) +
+    '</div>' +
+
+    _field('textarea', 'notes', 'Notes / Special Requests', v.Notes || '', false) +
+
+    // ── Live calculator panel ──
+    '<div id="calcPanel" style="background:var(--bg-main);border:1px solid var(--border);' +
+      'border-radius:10px;padding:16px;display:none">' +
+      '<div style="font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;' +
+        'color:var(--primary);margin-bottom:12px">Live Calculation</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px" id="calcCells"></div>' +
+      '<div id="discountAlert" style="margin-top:10px"></div>' +
+      '<div id="marginAlert"   style="margin-top:6px"></div>' +
+    '</div>' +
+
+    '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">' +
+      '<button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>' +
+      '<button type="button" class="btn btn-primary" onclick="submitProposalForm()">' +
+        (isEdit ? 'Update Proposal' : 'Create Proposal') +
+      '</button>' +
+    '</div>' +
+
+    '</form>';
+
+  openModal((isEdit ? 'Edit Proposal' : 'New Proposal'), html);
+
+  // Preload COGS if not yet loaded
+  if (!_cogsRates.length) {
+    api('getCOGSRates', {}).then(function(res) {
+      _cogsRates = res.data || [];
+      // Re-trigger if room type was pre-selected
+      if (v.RoomType) { document.getElementById('f_roomType').value = v.RoomType; liveCalc(); }
+    }).catch(function(){});
+  } else if (v.RoomType) {
+    setTimeout(function(){ liveCalc(); }, 100);
+  }
+}
+
+function _field(type, id, label, val, required, onchange, min, max) {
+  var req    = required ? ' required' : '';
+  var onch   = onchange ? ' oninput="' + onchange + '"' : '';
+  var minAttr = min ? ' min="' + min + '"' : '';
+  var maxAttr = max ? ' max="' + max + '"' : '';
+
+  if (type === 'textarea') {
+    return '<div class="form-group">' +
+      '<label class="form-label">' + label + '</label>' +
+      '<textarea class="form-control" id="f_' + id + '" rows="2">' + (val||'') + '</textarea>' +
+      '</div>';
+  }
+  return '<div class="form-group">' +
+    '<label class="form-label">' + label + (required ? ' <span style="color:#c62828">*</span>' : '') + '</label>' +
+    '<input type="' + type + '" class="form-control" id="f_' + id + '" value="' + (val||'') + '"' +
+    req + onch + minAttr + maxAttr + '>' +
+    '</div>';
+}
+
+// ─── DATE / NIGHTS SYNC ──────────────────────────────────────
+
+function onDateChange() {
+  var ci = document.getElementById('f_checkIn');
+  var co = document.getElementById('f_checkOut');
+  var ni = document.getElementById('f_nights');
+  if (!ci || !co) return;
+  if (ci.value && co.value) {
+    var ms = new Date(co.value) - new Date(ci.value);
+    if (ms > 0) { ni.value = Math.round(ms / 86400000); liveCalc(); }
+  }
+}
+
+function onNightsChange() {
+  var ci = document.getElementById('f_checkIn');
+  var ni = document.getElementById('f_nights');
+  var co = document.getElementById('f_checkOut');
+  if (!ci || !ni || !co) return;
+  if (ci.value && parseInt(ni.value) > 0) {
+    var d = new Date(ci.value);
+    d.setDate(d.getDate() + parseInt(ni.value));
+    co.value = d.toISOString().split('T')[0];
+  }
+  liveCalc();
+}
+
+function onRoomTypeChange() {
+  var rt    = document.getElementById('f_roomType');
+  var brEl  = document.getElementById('f_baseRatePerNight');
+  if (!rt || !brEl) return;
+  var cogs  = _cogsRates.find(function(c){ return c.RoomType === rt.value; });
+  if (cogs && !brEl.value) {
+    brEl.value = cogs.BaseRate || '';
+  }
+  liveCalc();
+}
+
+// ─── LIVE CALCULATOR ─────────────────────────────────────────
+
+function liveCalc() {
+  var rt   = _gv('f_roomType');
+  var base = parseFloat(_gv('f_baseRatePerNight')) || 0;
+  var disc = parseFloat(_gv('f_discountPct'))      || 0;
+  var ni   = parseInt(_gv('f_nights'))             || 1;
+
+  var panel = document.getElementById('calcPanel');
+  if (!panel) return;
+  if (!rt || base <= 0) { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+
+  // Find COGS
+  var cogsRec      = _cogsRates.find(function(c){ return c.RoomType === rt; });
+  var cogsPerNight = cogsRec ? (Number(cogsRec.COGSPerNight) || 0) : 0;
+  var minMargin    = cogsRec ? (Number(cogsRec.MinMarginPct) || 35) : 35;
+
+  var finalRate    = base * (1 - disc / 100);
+  var totalVal     = finalRate * ni;
+  var totalCOGS    = cogsPerNight * ni;
+  var grossMargin  = totalVal - totalCOGS;
+  var marginPct    = totalVal > 0 ? (grossMargin / totalVal * 100) : 0;
+
+  // Discount tier
+  var tier;
+  if (disc <= 0)      tier = { label: 'No Discount',           color: '#607d8b' };
+  else if (disc <= 5) tier = { label: 'Standard (Auto)',       color: '#2e7d32' };
+  else if (disc <= 15)tier = { label: 'Manager Approval Needed',color: '#e65100' };
+  else                tier = { label: 'Executive Approval Needed',color: '#c62828' };
+
+  var cells = [
+    { l: 'Final Rate/Night', v: '₹' + _fmtINR(finalRate) },
+    { l: 'Total Value',      v: '₹' + _fmtINR(totalVal),   bold: true },
+    { l: 'COGS Total',       v: '₹' + _fmtINR(totalCOGS),  color: '#e65100' },
+    { l: 'Gross Margin',     v: '₹' + _fmtINR(grossMargin),color: grossMargin >= 0 ? '#2e7d32' : '#c62828' },
+    { l: 'Margin %',         v: marginPct.toFixed(1) + '%', color: marginPct >= minMargin ? '#2e7d32' : '#e65100', bold: true }
+  ];
+
+  setEl('calcCells', cells.map(function(c) {
+    return '<div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:10px 12px">' +
+      '<div style="font-size:10px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">' + c.l + '</div>' +
+      '<div style="font-size:15px;' + (c.bold ? 'font-weight:800;' : '') + (c.color ? 'color:' + c.color + ';' : '') + '">' + c.v + '</div>' +
+    '</div>';
+  }).join(''));
+
+  // Discount alert
+  setEl('discountAlert', disc > 0 ?
+    '<div style="background:' + (disc <= 5 ? '#e8f5e9' : disc <= 15 ? '#fff3e0' : '#ffebee') + ';' +
+      'border-left:3px solid ' + tier.color + ';border-radius:6px;padding:8px 14px;font-size:12px;color:' + tier.color + ';font-weight:700">' +
+      '⚡ Discount Tier: ' + tier.label +
+    '</div>' : '');
+
+  // Margin alert
+  setEl('marginAlert', marginPct < minMargin && totalVal > 0 ?
+    '<div style="background:#fff8e1;border-left:3px solid #ff8f00;border-radius:6px;padding:8px 14px;font-size:12px;color:#e65100;font-weight:700">' +
+      '⚠ Margin ' + marginPct.toFixed(1) + '% is below the minimum ' + minMargin + '% for ' + rt +
+    '</div>' : '');
+}
+
+function _gv(id) { var el = document.getElementById(id); return el ? el.value : ''; }
+
+// ─── SUBMIT PROPOSAL FORM ─────────────────────────────────────
+
+function submitProposalForm() {
+  var data = {
+    clientName:       _gv('f_clientName'),
+    clientEmail:      _gv('f_clientEmail'),
+    clientPhone:      _gv('f_clientPhone'),
+    propertyName:     _gv('f_propertyName'),
+    roomType:         _gv('f_roomType'),
+    checkIn:          _gv('f_checkIn'),
+    checkOut:         _gv('f_checkOut'),
+    nights:           _gv('f_nights'),
+    baseRatePerNight: _gv('f_baseRatePerNight'),
+    discountPct:      _gv('f_discountPct'),
+    discountReason:   _gv('f_discountReason'),
+    notes:            _gv('f_notes')
+  };
+
+  if (!data.clientName)       { showToast('Client name is required', 'error'); return; }
+  if (!data.roomType)         { showToast('Room type is required', 'error'); return; }
+  if (!data.checkIn)          { showToast('Check-in date is required', 'error'); return; }
+  if (!data.nights || parseInt(data.nights) < 1) { showToast('Nights must be at least 1', 'error'); return; }
+  if (!data.baseRatePerNight) { showToast('Base rate is required', 'error'); return; }
+
+  var action = _editRowIndex ? 'updateProposal' : 'createProposal';
+  if (_editRowIndex) data.rowIndex = _editRowIndex;
+
+  api(action, data, { noCache: true }).then(function(res) {
+    closeModal();
+    showToast(res.message || 'Proposal saved', 'success');
+    invalidateCache('getProposals');
+    _loadProposals();
+  }).catch(function(err) {
+    showToast(err.message, 'error');
+  });
+}
+
+// ─── APPROVE / REJECT / SEND ──────────────────────────────────
+
+function doApproveProposal(rowIndex) {
+  var notes = prompt('Approval notes (optional):') || '';
+  api('approveProposal', { rowIndex: rowIndex, notes: notes }, { noCache: true }).then(function(res) {
+    showToast(res.message, 'success');
+    invalidateCache('getProposals');
+    _loadProposals();
+  }).catch(function(err) { showToast(err.message, 'error'); });
+}
+
+function doRejectProposal(rowIndex) {
+  var reason = prompt('Rejection reason (required):');
+  if (!reason) { showToast('Rejection reason is required', 'error'); return; }
+  api('rejectProposal', { rowIndex: rowIndex, notes: reason }, { noCache: true }).then(function(res) {
+    showToast(res.message, 'success');
+    invalidateCache('getProposals');
+    _loadProposals();
+  }).catch(function(err) { showToast(err.message, 'error'); });
+}
+
+function doSendProposal(rowIndex) {
+  if (!confirm('Mark this proposal as Sent to Client?')) return;
+  api('sendProposalToClient', { rowIndex: rowIndex }, { noCache: true }).then(function(res) {
+    showToast(res.message, 'success');
+    invalidateCache('getProposals');
+    _loadProposals();
+  }).catch(function(err) { showToast(err.message, 'error'); });
+}
+
+function doDeleteProposal(rowIndex, id) {
+  if (!confirm('Delete proposal ' + id + '? This cannot be undone.')) return;
+  api('deleteProposal', { rowIndex: rowIndex }, { noCache: true }).then(function(res) {
+    showToast(res.message, 'success');
+    invalidateCache('getProposals');
+    _loadProposals();
+  }).catch(function(err) { showToast(err.message, 'error'); });
+}
+
+// ─── PDF GENERATION ──────────────────────────────────────────
+
+function genCustomerPDF(rowIndex) {
+  showToast('Generating customer proposal...', 'info');
+  api('generateCustomerProposalPDF', { rowIndex: rowIndex }, { noCache: true }).then(function(res) {
+    openPDFResult(res);
+  }).catch(function(err) { showToast(err.message, 'error'); });
+}
+
+function genInternalPDF(rowIndex) {
+  showToast('Generating internal breakdown...', 'info');
+  api('generateInternalProposalPDF', { rowIndex: rowIndex }, { noCache: true }).then(function(res) {
+    openPDFResult(res);
+  }).catch(function(err) { showToast(err.message, 'error'); });
+}
+
+// ─── COGS SETTINGS PANEL ────────────────────────────────────
+
+function loadCOGSSettings() {
+  api('getCOGSRates', {}).then(function(res) {
+    _cogsRates = res.data || [];
+    var rows = _cogsRates.map(function(c) {
+      return '<tr>' +
+        '<td>' + c.RoomType + '</td>' +
+        '<td><input type="number" class="form-control" style="width:110px" ' +
+          'id="cogs_cost_' + c.rowIndex + '" value="' + (c.COGSPerNight||0) + '"></td>' +
+        '<td><input type="number" class="form-control" style="width:80px" ' +
+          'id="cogs_min_' + c.rowIndex + '" value="' + (c.MinMarginPct||35) + '"></td>' +
+        '<td><input type="number" class="form-control" style="width:110px" ' +
+          'id="cogs_base_' + c.rowIndex + '" value="' + (c.BaseRate||0) + '"></td>' +
+        '<td><button class="btn btn-primary btn-sm" onclick="saveCOGSRow(' + c.rowIndex + ',\'' + c.RoomType + '\')">Save</button></td>' +
+      '</tr>';
+    }).join('');
+
+    var html =
+      '<p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">' +
+        'Set the Cost of Goods Sold and minimum margin thresholds for each room type.' +
+      '</p>' +
+      '<div class="table-responsive">' +
+        '<table class="data-table">' +
+          '<thead><tr><th>Room Type</th><th>COGS/Night (₹)</th><th>Min Margin %</th><th>Base Rate (₹)</th><th></th></tr></thead>' +
+          '<tbody>' + rows + '</tbody>' +
+        '</table>' +
+      '</div>';
+
+    openModal('COGS Rate Configuration', html, '700px');
+  }).catch(function(err) { showToast(err.message, 'error'); });
+}
+
+function saveCOGSRow(rowIndex, roomType) {
+  var data = {
+    rowIndex:    rowIndex,
+    RoomType:    roomType,
+    COGSPerNight: document.getElementById('cogs_cost_' + rowIndex).value,
+    MinMarginPct: document.getElementById('cogs_min_'  + rowIndex).value,
+    BaseRate:     document.getElementById('cogs_base_' + rowIndex).value
+  };
+  api('updateCOGSRate', data, { noCache: true }).then(function(res) {
+    showToast(res.message, 'success');
+    invalidateCache('getCOGSRates');
+    api('getCOGSRates', {}).then(function(r){ _cogsRates = r.data || []; });
+  }).catch(function(err) { showToast(err.message, 'error'); });
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────
+
+function _fmtINR(n) {
+  return Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+}
+</script>

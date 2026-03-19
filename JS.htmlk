@@ -61,6 +61,12 @@ function setUserUI() {
   if (u.role === 'HR') {
     showEl('mgmtLabel');
   }
+  // Proposal Calculator — Admin, Exec, and Sales
+  if (u.role === 'Admin' || u.role === 'Exec' || u.role === 'Sales') {
+    showEl('calculatorNavItem');
+    showEl('mbnCalculator');
+    showEl('mgmtLabel');
+  }
 }
 
 // ─── SERVER API + CLIENT-SIDE CACHE ──────────────────────────
@@ -72,7 +78,10 @@ var _SKIP_CACHE = {
   submitLead:1, updateLeadStatus:1, submitBooking:1,
   calculateIncentive:1, recalculateIncentivesForMonth:1,
   updateIncentiveTiers:1, addUser:1, updateUser:1,
-  updateEmailRecipient:1, getLastModified:1
+  updateEmailRecipient:1, getLastModified:1,
+  createProposal:1, updateProposal:1, approveProposal:1,
+  rejectProposal:1, sendProposalToClient:1, deleteProposal:1,
+  updateCOGSRate:1, generateCustomerProposalPDF:1, generateInternalProposalPDF:1
 };
 
 function api(action, data, opts) {
@@ -220,6 +229,7 @@ function showPage(pageName) {
     case 'bookings':   renderBookingsPage(target); break;
     case 'reports':    renderReportsPage(target);  break;
     case 'incentives': renderIncentivesPage(target);break;
+    case 'calculator': loadCalculatorPage();        break;
     case 'admin':      renderAdminPage(target);    break;
     case 'profile':    renderProfilePage(target);  break;
   }

@@ -34,6 +34,10 @@ function initSystem() {
     Logger.log("Step 5: Formatting sheets...");
     formatAllSheets();
 
+    // Step 6: Initialize Proposal / Calculator sheets
+    Logger.log("Step 6: Setting up Proposal sheets...");
+    initProposalSheets();
+
     Logger.log("=== INITIALIZATION COMPLETE ===");
 
     if (ui) {
