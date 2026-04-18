@@ -87,6 +87,15 @@ function requireHROrAdmin(user) {
   }
 }
 
+/**
+ * Require Sales, HR, or Admin role (any active staff)
+ */
+function requireSalesOrAbove(user) {
+  if (!hasAccess(user, ["Admin", "HR", "Sales"])) {
+    throw new Error("Access denied: active user required");
+  }
+}
+
 // ─── USER MANAGEMENT (Admin only) ─────────────────────────────
 
 function getUsers(user) {
@@ -261,6 +270,24 @@ function isValidEmail(email) {
   return re.test(String(email).trim());
 }
 
+/**
+ * Sanitize HTML intended for use as a user-editable email body.
+ * Strips script/style/iframe/object/embed blocks, removes all on*= handlers,
+ * and neutralizes javascript: URLs. Unlike sanitizeInput (which strips all tags),
+ * this preserves basic formatting and links so branded emails render correctly.
+ */
+function sanitizeEmailBodyHtml(html) {
+  if (typeof html !== "string") return String(html || "");
+  var out = html;
+  out = out.replace(/<\s*(script|style|iframe|object|embed|meta|link)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, "");
+  out = out.replace(/<\s*(script|style|iframe|object|embed|meta|link)[^>]*\/?>/gi, "");
+  out = out.replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, "");
+  out = out.replace(/\son[a-z]+\s*=\s*'[^']*'/gi, "");
+  out = out.replace(/\son[a-z]+\s*=\s*[^\s>]+/gi, "");
+  out = out.replace(/(href|src)\s*=\s*(['"]?)\s*javascript:[^'">\s]*/gi, '$1=$2#');
+  return out.substring(0, 50000);
+}
+
 function isValidDate(dateStr) {
   const d = new Date(dateStr);
   return !isNaN(d.getTime());
@@ -320,4 +347,3 @@ function getSystemLogs(user) {
 
   return { success: true, data: logs };
 }
-
