@@ -19,7 +19,9 @@ var SHEETS = {
   BOOKINGS:         "Bookings",
   INCENTIVES:       "Incentives",
   SYSTEM_LOGS:      "SystemLogs",
-  EMAIL_RECIPIENTS: "EmailRecipients"
+  EMAIL_RECIPIENTS: "EmailRecipients",
+  MASTER_CONTACTS:  "MasterContacts",
+  EMAIL_LOG:        "EmailLog"
 };
 
 // ─── WEB APP ENTRY POINT ──────────────────────────────────────
