@@ -36,6 +36,9 @@ function doGet(e) {
     // Auto-init sheets if missing
     if (!isSystemInitialized()) {
       initSystem();
+    } else {
+      // Idempotent migration for existing deployments (MasterContacts + EmailLog)
+      ensureMasterContactsAndEmailLog();
     }
 
     var userEmail = Session.getActiveUser().getEmail();
